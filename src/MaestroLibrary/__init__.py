@@ -13,7 +13,7 @@ from .locators import matches, walk
 from .android import Logcat, Mirror
 from .mcp import MaestroError, MaestroMCP, verified_exe
 
-__version__ = "0.4.1"
+__version__ = "0.4.2"
 NO_APP = "maestro.no.app"
 SETTLE_TIMEOUT_MS = 3000
 APP_LAUNCH_TIMEOUT_S = 20  # Appium's default appWaitDuration

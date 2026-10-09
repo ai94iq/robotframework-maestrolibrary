@@ -4,7 +4,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions: [Sem
 
 ## [Unreleased]
 
-## [0.4.1] - 2026-10-09
+## [0.4.2] - 2026-10-09
 ### Changed
 - The source is public on GitHub (https://github.com/ai94iq/robotframework-maestrolibrary); the PyPI page links to it, its issues and this
   changelog. CI and PyPI publishing run on GitHub Actions.
