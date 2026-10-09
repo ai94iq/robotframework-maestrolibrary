@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=84"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "robotframework-maestrolibrary"
+dynamic = ["version"]
+description = "Robot Framework mobile keywords on top of Maestro, with an AppiumLibrary-style API"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.10"
+authors = [{ name = "Abdulwahb Isam" }]
+dependencies = [
+    "robotframework>=7.5",
+    "robotframework-pythonlibcore>=4.6.0",
+]
+classifiers = [
+    "Framework :: Robot Framework",
+    "Framework :: Robot Framework :: Library",
+    "Topic :: Software Development :: Testing",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Operating System :: OS Independent",
+    "Typing :: Typed",
+]
+
+[project.urls]
+Homepage = "https://github.com/ai94iq/robotframework-maestrolibrary"
+Issues = "https://github.com/ai94iq/robotframework-maestrolibrary/issues"
+Changelog = "https://github.com/ai94iq/robotframework-maestrolibrary/blob/main/CHANGELOG.md"
+
+[tool.setuptools.dynamic]
+version = {attr = "MaestroLibrary.__version__"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+MaestroLibrary = ["py.typed"]
+
+[tool.bandit]
+# B404/B603: the library drives `maestro`, `adb` and `scrcpy` through subprocess on purpose, always
+# with list arguments and no shell; Execute Adb Shell runs the caller's adb command by design.
+skips = ["B404", "B603"]

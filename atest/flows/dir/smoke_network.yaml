@@ -1,0 +1,5 @@
+appId: com.android.settings
+tags:
+  - smoke
+---
+- assertVisible: "Network.*"

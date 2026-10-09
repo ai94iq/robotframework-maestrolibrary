@@ -1,0 +1,6 @@
+appId: com.android.settings
+tags:
+  - slow
+---
+# Must not run when include_tags=smoke: the text is not on screen, so a run fails.
+- assertVisible: "No such thing in Settings"
