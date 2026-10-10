@@ -3,6 +3,8 @@
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.5.0] - 2026-10-10
 ### Added
 - `python -m MaestroLibrary.flow2robot flow.yaml` converts a Maestro flow, such as one recorded in
   Maestro Studio, to a Robot test; commands without a keyword become an inline `Run Flow`. Needs
