@@ -40,7 +40,7 @@ version = {attr = "MaestroLibrary.__version__"}
 where = ["src"]
 
 [tool.setuptools.package-data]
-MaestroLibrary = ["py.typed"]
+MaestroLibrary = ["py.typed", "studio.html"]
 
 [tool.bandit]
 # B404/B603: the library drives `maestro`, `adb` and `scrcpy` through subprocess on purpose, always
