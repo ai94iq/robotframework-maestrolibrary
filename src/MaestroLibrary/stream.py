@@ -1,6 +1,7 @@
 """Raw H.264 screen stream from scrcpy-server (shipped with scrcpy), for the studio's live view."""
 import os
 import re
+import secrets
 import socket
 import subprocess
 import time
@@ -35,13 +36,18 @@ def server_file():
 class ScrcpyStream:
     """Starts scrcpy-server on an Android device and reads its raw Annex-B H.264 video."""
 
-    def __init__(self, adb, device, port=27183, max_size=1080):
+    def __init__(self, adb, device, max_size=1080, video_encoder=None):
         # Everything after `adb shell` is joined into one device shell command line: allow no metacharacters.
         if not SAFE_SERIAL.fullmatch(str(device)):
             raise ValueError(f"Unexpected device serial {device!r}.")
         if not isinstance(max_size, int):
             raise ValueError(f"max_size must be an int, not {max_size!r}.")
-        self.adb, self.device, self.port, self.max_size = adb, device, int(port), max_size
+        if video_encoder is not None and not SAFE_SERIAL.fullmatch(video_encoder):
+            raise ValueError(f"Unexpected video encoder name {video_encoder!r}.")
+        self.adb, self.device, self.port, self.max_size = adb, device, None, max_size
+        # A socket name of its own per run (scrcpy's scid), so a crashed run's server or forward never collides.
+        self.scid = f"{secrets.randbits(31):08x}"
+        self.video_encoder = video_encoder     # None: the device's default (a hardware encoder on phones)
         self._proc = self._sock = None
         self._pending = b""
 
@@ -53,11 +59,13 @@ class ScrcpyStream:
         if not SAFE_VERSION.fullmatch(version):
             raise ValueError(f"Unexpected scrcpy version {version!r}.")
         self._adb("push", path, REMOTE)
-        self._adb("forward", f"tcp:{self.port}", "localabstract:scrcpy")
+        answer = self._adb("forward", "tcp:0", f"localabstract:scrcpy_{self.scid}").stdout
+        self.port = int(answer.strip())          # adb picks a free local port and prints it
         self._proc = subprocess.Popen(
             [self.adb, "-s", self.device, "shell", f"CLASSPATH={REMOTE}", "app_process", "/",
-             "com.genymobile.scrcpy.Server", version, "tunnel_forward=true", "audio=false", "control=false",
-             "raw_stream=true", "video_codec=h264", f"max_size={self.max_size}"],
+             "com.genymobile.scrcpy.Server", version, f"scid={self.scid}", "tunnel_forward=true", "audio=false", "control=false",
+             "raw_stream=true", "video_codec=h264", f"max_size={self.max_size}"]
+            + ([f"video_encoder={self.video_encoder}"] if self.video_encoder else []),
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         # adb accepts the forwarded connection before the server listens, then closes it: the server is up
         # only once video bytes arrive (measured: about 1.5 s on an Android 15 phone).
@@ -91,8 +99,9 @@ class ScrcpyStream:
             self._sock.close()
         if self._proc and self._proc.poll() is None:
             self._proc.terminate()       # ending the adb shell ends the server (checked: no app_process left)
-        try:
-            self._adb("forward", "--remove", f"tcp:{self.port}")
-        except (subprocess.SubprocessError, OSError):
-            pass
+        if self.port:
+            try:
+                self._adb("forward", "--remove", f"tcp:{self.port}")
+            except (subprocess.SubprocessError, OSError):
+                pass
         self._proc = self._sock = None

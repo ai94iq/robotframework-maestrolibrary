@@ -1,7 +1,19 @@
 """The Studio window (PySide6): live device screen, inspector and recorder. Needs the `studio` extra."""
+import html
+import subprocess
+import threading
+import time
+
 import av
-from PySide6.QtCore import QObject, QThread, Signal, Slot
-from PySide6.QtGui import QImage
+from PySide6.QtCore import QObject, QPointF, QRectF, QSize, Qt, QThread, QTimer, Signal, Slot
+from PySide6.QtGui import (QAction, QActionGroup, QBrush, QColor, QFontDatabase, QGuiApplication, QIcon, QImage,
+                           QPainter, QPainterPath, QPalette, QPen, QPixmap)
+from PySide6.QtWidgets import (QAbstractItemView, QApplication, QFileDialog, QHBoxLayout, QHeaderView, QLabel,
+                               QLineEdit, QListWidget, QListWidgetItem, QMainWindow, QMenu, QPushButton, QSizePolicy,
+                               QSplitter, QTableWidget, QTableWidgetItem, QToolBar, QTreeWidget, QTreeWidgetItem,
+                               QVBoxLayout, QWidget, QWidgetAction)
+
+from .locators import element_at, locator_candidates, parse_bounds
 
 MAX_SIDE = 8192            # larger frames are dropped: our scrcpy-server never sends them
 
@@ -23,10 +35,11 @@ class FrameDecoder:
             for frame in frames:
                 if max(frame.width, frame.height) > self.max_side:
                     continue
-                rgb = frame.reformat(format="rgb24")
-                plane = rgb.planes[0]
-                images.append(QImage(bytes(plane), rgb.width, rgb.height, plane.line_size,
-                                     QImage.Format.Format_RGB888).copy())
+                # BGRA bytes are Qt's native 32-bit layout: painting needs no conversion per frame
+                bgra = frame.reformat(format="bgra")
+                plane = bgra.planes[0]
+                images.append(QImage(bytes(plane), bgra.width, bgra.height, plane.line_size,
+                                     QImage.Format.Format_RGB32).copy())
         return images
 
     def feed(self, data):
@@ -59,13 +72,25 @@ class ActionWorker(QObject):
     recorded = Signal(object)          # the recorded line, or None while recording is off
     failed = Signal(str)
     tree = Signal(dict)
+    image = Signal(QImage)             # a screenshot, while there is no live view
+    snap = Signal()                    # take one now
+    edit = Signal(str)                 # "undo" or "clear"
+    edited = Signal()
     done = Signal()                    # a step finished, whatever its outcome
 
     def __init__(self, session):
         super().__init__()
         self.session = session
+        self.screenshot, self.live = None, False
         self.request.connect(self.run)
         self.poll.connect(self.refresh)
+        self.snap.connect(self.grab)
+        self.edit.connect(self.apply_edit)
+
+    @Slot(str)
+    def apply_edit(self, op):
+        {"undo": self.session.undo, "clear": self.session.clear}[op]()
+        self.edited.emit()
 
     @Slot(str, dict)
     def run(self, kind, kwargs):
@@ -75,7 +100,18 @@ class ActionWorker(QObject):
             self.failed.emit(str(err) or type(err).__name__)
         finally:
             self.refresh()
+            if not self.live:
+                self.grab()
             self.done.emit()
+
+    @Slot()
+    def grab(self):
+        if not self.screenshot:
+            return
+        try:
+            self.image.emit(self.screenshot())
+        except Exception as err:
+            self.failed.emit(f"Screenshot failed: {err}")
 
     @Slot()
     def refresh(self):
@@ -86,20 +122,41 @@ class ActionWorker(QObject):
 
 
 class StreamReader(QThread):
-    """Reads a started ScrcpyStream on its own thread and emits each decoded frame."""
+    """Reads a ScrcpyStream on its own thread and decodes it, keeping only the newest frame.
 
-    frame = Signal(QImage)
+    `ready` fires once per batch of new frames; the UI calls take(). Frames the UI had no time
+    to paint are dropped instead of queued, so the view never falls behind the device.
+    """
+
+    ready = Signal()
     failed = Signal(str)
 
     def __init__(self, stream, decoder=None):
         super().__init__()
         self.stream, self.decoder = stream, decoder or FrameDecoder()
         self._stopping = False
+        self._lock = threading.Lock()
+        self._latest, self._signalled, self.decoded_at = None, False, 0.0
+
+    def take(self):
+        """The newest frame (or None), and when it was decoded."""
+        with self._lock:
+            image, self._latest, self._signalled = self._latest, None, False
+            return image, self.decoded_at
 
     def run(self):
+        try:
+            self.stream.start()                # about 2 s on a phone: off the UI thread
+        except (RuntimeError, ValueError, OSError, subprocess.SubprocessError) as err:
+            self.failed.emit(f"No live view ({err}); showing screenshots after each step.")
+            return
         for chunk in iter(self.stream.read, b""):
             for image in self.decoder.feed(chunk):
-                self.frame.emit(image)
+                with self._lock:
+                    self._latest, self.decoded_at = image, time.monotonic()
+                    signal, self._signalled = not self._signalled, True
+                if signal:
+                    self.ready.emit()
         if not self._stopping:
             self.failed.emit("The live view ended; showing screenshots after each step.")
 
@@ -107,3 +164,606 @@ class StreamReader(QThread):
         self._stopping = True
         self.stream.stop()
         self.wait(5000)
+
+
+# ---------------------------------------------------------------- the window
+
+THEMES = {
+    "light": {"ground": "#f3f1ec", "panel": "#fbfaf7", "line": "#d8d2c6", "ink": "#1d2126", "ink2": "#56606b",
+              "shell": "#18324a", "shell_ink": "#eef3f7", "shell2": "#2a4a66", "rec": "#c8372d", "rec_soft": "#f6dcd8",
+              "ok": "#1f7a4d", "warn": "#9a5b00", "select": "#2f6fb3", "screen": "#0b0d10"},
+    "dark": {"ground": "#12161b", "panel": "#181d23", "line": "#2b333d", "ink": "#e6e9ed", "ink2": "#a3adb8",
+             "shell": "#0d2236", "shell_ink": "#e3ecf4", "shell2": "#1d3a55", "rec": "#ff6b5e", "rec_soft": "#3a1d1b",
+             "ok": "#5fd39a", "warn": "#f0b75a", "select": "#7db4ee", "screen": "#000000"},
+}
+
+
+def theme_name(app):
+    try:
+        return "dark" if app.styleHints().colorScheme() == Qt.ColorScheme.Dark else "light"
+    except AttributeError:             # Qt before 6.5
+        return "light"
+
+
+def apply_theme(app):
+    """Fusion everywhere, so the window looks the same on Windows, Linux and macOS; colors follow the system."""
+    t = THEMES[theme_name(app)]
+    app.setStyle("Fusion")
+    p = QPalette()
+    for role, key in ((QPalette.ColorRole.Window, "ground"), (QPalette.ColorRole.Base, "panel"),
+                      (QPalette.ColorRole.AlternateBase, "ground"), (QPalette.ColorRole.Button, "panel"),
+                      (QPalette.ColorRole.Text, "ink"), (QPalette.ColorRole.WindowText, "ink"),
+                      (QPalette.ColorRole.ButtonText, "ink"), (QPalette.ColorRole.Highlight, "select"),
+                      (QPalette.ColorRole.PlaceholderText, "ink2"), (QPalette.ColorRole.ToolTipBase, "panel"),
+                      (QPalette.ColorRole.ToolTipText, "ink")):
+        p.setColor(role, QColor(t[key]))
+    p.setColor(QPalette.ColorRole.HighlightedText, QColor("#ffffff"))
+    app.setPalette(p)
+    app.setStyleSheet(
+        f"QToolBar#shell {{ background: {t['shell']}; border: 0; padding: 6px 10px; spacing: 6px; }}"
+        f"QToolBar#shell QToolButton {{ color: {t['shell_ink']}; border: 1px solid {t['shell2']}; border-radius: 6px;"
+        f" padding: 4px 9px; }}"
+        f"QToolBar#shell QToolButton:hover {{ background: {t['shell2']}; }}"
+        f"QToolBar#shell QToolButton:checked {{ background: {t['shell_ink']}; color: {t['shell']}; }}"
+        f"QToolBar#shell QLabel {{ color: {t['shell_ink']}; }}"
+        f"QLabel#product {{ font-weight: 600; font-size: 14px; padding-right: 10px; }}"
+        f"QLabel#pane {{ font-weight: 600; padding: 8px 10px 4px; }}"
+        f"QSplitter::handle {{ background: {t['line']}; }}"
+        f"QPushButton {{ padding: 4px 10px; }}"
+        f"QLineEdit {{ border: 1px solid {t['line']}; border-radius: 6px; padding: 4px 6px; background: {t['ground']}; }}"
+        f"QLineEdit:focus {{ border-color: {t['select']}; }}"
+        f"QPushButton:checked {{ background: {t['rec_soft']}; color: {t['rec']}; border: 1px solid {t['rec']}; }}")
+    return t
+
+
+def icon(name, color):
+    """Line icons drawn in one stroke weight; no font glyphs."""
+    pm = QPixmap(32, 32)
+    pm.fill(Qt.GlobalColor.transparent)
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    pen = QPen(QColor(color), 2.4, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
+    p.setPen(pen)
+    path = QPainterPath()
+    if name == "launch":
+        path.moveTo(10, 7); path.lineTo(24, 16); path.lineTo(10, 25); path.closeSubpath()
+    elif name == "back":
+        path.moveTo(19, 7); path.lineTo(10, 16); path.lineTo(19, 25)
+    elif name == "keyboard":
+        path.addRoundedRect(5, 8, 22, 13, 2, 2)
+        for x in (10, 14.5, 19, 23):
+            path.addEllipse(x - 0.6, 12.4, 1.2, 1.2)
+        path.moveTo(11, 17.5); path.lineTo(21, 17.5); path.moveTo(13, 25); path.lineTo(16, 27); path.lineTo(19, 25)
+    elif name == "camera":
+        path.moveTo(5, 11); path.lineTo(10, 11); path.lineTo(12, 8); path.lineTo(20, 8); path.lineTo(22, 11)
+        path.lineTo(27, 11); path.lineTo(27, 25); path.lineTo(5, 25); path.closeSubpath(); path.addEllipse(11.5, 12.5, 9, 9)
+    elif name == "lock":
+        path.addRoundedRect(8, 14, 16, 12, 2, 2); path.moveTo(11, 14); path.lineTo(11, 10)
+        path.arcTo(11, 5, 10, 10, 180, -180); path.lineTo(21, 14)
+    elif name == "grid":
+        path.addRoundedRect(6, 6, 20, 20, 2, 2); path.moveTo(6, 16); path.lineTo(26, 16); path.moveTo(16, 6); path.lineTo(16, 26)
+    elif name == "undo":
+        path.moveTo(12, 19); path.lineTo(6, 13); path.lineTo(12, 7); path.moveTo(6, 13); path.lineTo(19, 13)
+        path.arcTo(13, 13, 12, 12, 90, -180); path.lineTo(15, 25)
+    elif name == "clear":
+        path.moveTo(6, 10); path.lineTo(26, 10); path.moveTo(12, 10); path.lineTo(12, 6); path.lineTo(20, 6)
+        path.lineTo(20, 10); path.moveTo(9, 10); path.lineTo(10, 26); path.lineTo(22, 26); path.lineTo(23, 10)
+    elif name == "copy":
+        path.addRoundedRect(11, 11, 15, 15, 2, 2); path.moveTo(21, 11); path.lineTo(21, 6); path.lineTo(6, 6)
+        path.lineTo(6, 21); path.lineTo(11, 21)
+    elif name == "save":
+        path.moveTo(7, 6); path.lineTo(21, 6); path.lineTo(26, 11); path.lineTo(26, 26); path.lineTo(7, 26)
+        path.closeSubpath(); path.moveTo(11, 6); path.lineTo(11, 12); path.lineTo(20, 12); path.lineTo(20, 6)
+    elif name == "inspect":
+        path.addEllipse(7, 7, 13, 13); path.moveTo(18, 18); path.lineTo(26, 26)
+    elif name == "act":
+        path.moveTo(9, 6); path.lineTo(9, 24); path.lineTo(14, 19); path.lineTo(18, 27); path.lineTo(21, 26)
+        path.lineTo(17, 18); path.lineTo(24, 18); path.closeSubpath()
+    elif name == "record":
+        p.setBrush(QColor(color)); path.addEllipse(10, 10, 12, 12)
+    p.drawPath(path)
+    p.end()
+    return QIcon(pm)
+
+
+def plain_label(text="", name=""):
+    """Device text is shown as text, never as HTML."""
+    label = QLabel(text)
+    label.setTextFormat(Qt.TextFormat.PlainText)
+    label.setOpenExternalLinks(False)
+    label.setObjectName(name)
+    return label
+
+
+def first_line(element):
+    """A short name for an element: its text, content-desc or hint, else the last part of its id."""
+    text = element.get("txt") or element.get("a11y") or element.get("hint") or (element.get("rid") or "").rsplit("/", 1)[-1]
+    return text.split("\n")[0]
+
+
+class DeviceView(QWidget):
+    """The device screen: live frames, element boxes, and the gestures that act or inspect."""
+
+    act = Signal(str, dict)             # (kind, keyword arguments) for ActionWorker
+    selected = Signal(object)           # an element (Inspect mode), or None
+    hovered = Signal(str)
+
+    def __init__(self, theme):
+        super().__init__()
+        self.t = theme
+        self.image, self.tree, self.mode, self.handles, self.secret = None, None, "act", False, False
+        self.hover = self.pick = self._down = None
+        self.typed, self._flash = "", False
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.setMouseTracking(True)
+        self.setMinimumSize(280, 400)
+        self.setAccessibleName("Device screen")
+
+    # state
+    def set_frame(self, image):
+        self.image = image
+        self.update()
+
+    def set_tree(self, tree):
+        self.tree = tree
+        self.hover = None
+        self.update()
+
+    def flash(self):
+        self._flash = True
+        self.update()
+        QTimer.singleShot(450, self._unflash)
+
+    def _unflash(self):
+        self._flash = False
+        self.update()
+
+    def typing_text(self):
+        return "*" * len(self.typed) if self.secret else self.typed
+
+    # geometry
+    def _size(self):
+        if self.tree:
+            return self.tree["width"], self.tree["height"]
+        if self.image:
+            return self.image.width(), self.image.height()
+        return 9, 20
+
+    def frame_rect(self):
+        w, h = self._size()
+        area = self.rect().adjusted(12, 12, -12, -12)
+        scale = min(area.width() / w, area.height() / h)
+        fw, fh = w * scale, h * scale
+        return QRectF(area.x() + (area.width() - fw) / 2, area.y() + (area.height() - fh) / 2, fw, fh)
+
+    def to_device(self, pos):
+        r = self.frame_rect()
+        if not r.contains(QPointF(pos)):
+            return None
+        w, h = self._size()
+        return round((pos.x() - r.x()) * w / r.width()), round((pos.y() - r.y()) * h / r.height())
+
+    def _box(self, element):
+        b = parse_bounds(element.get("b"))
+        if not b:
+            return None
+        r, (w, h) = self.frame_rect(), self._size()
+        sx, sy = r.width() / w, r.height() / h
+        return QRectF(r.x() + b[0] * sx, r.y() + b[1] * sy, (b[2] - b[0]) * sx, (b[3] - b[1]) * sy)
+
+    def element_at(self, pos):
+        point = self.to_device(pos)
+        return element_at(self.tree["elements"], *point) if point and self.tree else None
+
+    # painting
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        r = self.frame_rect()
+        frame = QPainterPath()
+        frame.addRoundedRect(r, 16, 16)
+        p.fillPath(frame, QColor(self.t["screen"]))
+        if self.image:
+            p.save(); p.setClipPath(frame); p.drawImage(r, self.image); p.restore()
+        else:
+            p.setPen(QColor("#c9d1d9"))
+            p.drawText(r, Qt.AlignmentFlag.AlignCenter, "Connecting to the device")
+        if self.tree and self.handles:
+            p.setPen(QPen(QColor(self.t["select"]), 1))
+            for e in self.tree["elements"]:
+                if any(e.get(k) for k in ("rid", "txt", "a11y", "hint")):
+                    box = self._box(e)
+                    if box:
+                        p.drawRect(box)
+        for element, color, fill in ((self.hover, self.t["select"], 40), (self.pick, self.t["ok"], 40)):
+            box = self._box(element) if element else None
+            if box:
+                c = QColor(color); p.setPen(QPen(c, 2.5)); c.setAlpha(fill); p.fillRect(box, c); p.drawRect(box)
+        p.setPen(QPen(QColor(self.t["rec"] if self._flash else self.t["shell"]), 4 if self._flash else 3))
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.drawPath(frame)
+        if self.hasFocus():
+            p.setPen(QPen(QColor(self.t["select"]), 2, Qt.PenStyle.DashLine))
+            p.drawRoundedRect(r.adjusted(-6, -6, 6, 6), 20, 20)
+        if self.typed:
+            box = QRectF(r.x() + 10, r.bottom() - 54, r.width() - 20, 44)
+            p.setPen(Qt.PenStyle.NoPen); p.setBrush(QColor(self.t["panel"])); p.drawRoundedRect(box, 8, 8)
+            p.setPen(QColor(self.t["ink"]))
+            p.drawText(box.adjusted(10, 0, -10, 0), Qt.AlignmentFlag.AlignVCenter | Qt.TextFlag.TextSingleLine,
+                       "Typing: " + self.typing_text() + "   (Enter sends, Esc cancels)")
+
+    # input
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._down = event.position().toPoint()
+            self.setFocus()
+
+    def mouseReleaseEvent(self, event):
+        if event.button() != Qt.MouseButton.LeftButton or self._down is None:
+            return
+        start, end, self._down = self._down, event.position().toPoint(), None
+        if self.mode == "inspect":
+            self.pick = self.element_at(start)
+            self.selected.emit(self.pick)
+            self.update()
+            return
+        a, b = self.to_device(start), self.to_device(end)
+        if not a:
+            return
+        self.flush_typing()
+        if b and (end - start).manhattanLength() > 30:
+            self.act.emit("swipe", {"x": a[0], "y": a[1], "x2": b[0], "y2": b[1]})
+        else:
+            self.act.emit("click", {"x": a[0], "y": a[1]})
+
+    def mouseMoveEvent(self, event):
+        element = self.element_at(event.position().toPoint())
+        if element is not self.hover:
+            self.hover = element
+            self.hovered.emit(first_line(element) if element else "")
+            self.update()
+
+    def leaveEvent(self, event):
+        self.hover = None
+        self.hovered.emit("")
+        self.update()
+
+    def contextMenuEvent(self, event):
+        point = self.to_device(event.pos())
+        if self.mode != "act" or not point:
+            return
+        element = element_at(self.tree["elements"], *point) if self.tree else None
+        menu = QMenu(self)
+        title = menu.addAction((first_line(element) or "(no text)").replace("&", "&&") if element
+                               else "No locatable element here: a point tap is recorded")
+        title.setEnabled(False)
+        menu.addSeparator()
+        for kind, text in (("long_press", "Long press"), ("wait_visible", "Wait until visible"),
+                           ("should_be_visible", "Should be visible")):
+            menu.addAction(text).setData(kind)
+        box = QWidget(); row = QHBoxLayout(box); row.setContentsMargins(8, 4, 8, 4)
+        expected = QLineEdit((element.get("txt") or element.get("a11y") or "") if element else "")
+        expected.setAccessibleName("Expected text")
+        check = QPushButton("Text should be")
+        row.addWidget(expected); row.addWidget(check)
+        holder = QWidgetAction(menu); holder.setDefaultWidget(box); menu.addAction(holder)
+        x, y = point
+        check.clicked.connect(lambda: (menu.close(), self.act.emit("text_should_be", {"x": x, "y": y, "text": expected.text()})))
+        menu.triggered.connect(lambda action: self.act.emit(action.data(), {"x": x, "y": y}) if action.data() else None)
+        menu.exec(event.globalPos())
+
+    def keyPressEvent(self, event):
+        if self.mode != "act" or event.modifiers() & (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.AltModifier
+                                                      | Qt.KeyboardModifier.MetaModifier):
+            return super().keyPressEvent(event)
+        key = event.key()
+        if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            self.flush_typing()
+        elif key == Qt.Key.Key_Escape:
+            self.typed = ""
+        elif key == Qt.Key.Key_Backspace:
+            self.typed = self.typed[:-1]
+        elif event.text() and event.text().isprintable():
+            self.typed += event.text()
+        else:
+            return super().keyPressEvent(event)
+        self.update()
+
+    def flush_typing(self):
+        if self.typed:
+            text, self.typed = self.typed, ""
+            self.act.emit("type", {"text": text, "secret": self.secret})
+            self.update()
+
+
+class InspectorPane(QWidget):
+    """Source tree and the selected element: suggested locators, attributes, actions."""
+
+    act = Signal(str, dict)
+    picked = Signal(object)
+
+    def __init__(self):
+        super().__init__()
+        self.tree, self.element = None, None
+        layout = QVBoxLayout(self); layout.setContentsMargins(0, 0, 0, 0); layout.setSpacing(0)
+        layout.addWidget(plain_label("Selected element", "pane"))
+        self.title = plain_label("Inspect mode: click an element on the screen, or pick one in the source tree.", "title")
+        self.title.setWordWrap(True); self.title.setContentsMargins(10, 0, 10, 6)
+        layout.addWidget(self.title)
+        self.locators = QTableWidget(0, 2)
+        self.locators.setHorizontalHeaderLabels(["Suggested locator (double-click copies)", "Matches"])
+        self.attributes = QTableWidget(0, 2)
+        self.attributes.setHorizontalHeaderLabels(["Attribute", "Value"])
+        for table in (self.locators, self.attributes):
+            table.verticalHeader().setVisible(False)
+            table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+            table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+            table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+            table.setWordWrap(True)
+        self.attributes.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self.locators.cellDoubleClicked.connect(lambda r, c: QGuiApplication.clipboard().setText(self.locators.item(r, 0).text()))
+        layout.addWidget(self.locators, 2)
+        actions = QHBoxLayout(); actions.setContentsMargins(8, 6, 8, 6)
+        for kind, text in (("click", "Tap"), ("long_press", "Long press"), ("wait_visible", "Wait visible"),
+                           ("should_be_visible", "Should be visible"), ("text_should_be", "Text should be")):
+            button = QPushButton(text)
+            button.clicked.connect(lambda _=False, k=kind: self._act(k))
+            actions.addWidget(button)
+        layout.addLayout(actions)
+        layout.addWidget(self.attributes, 2)
+        layout.addWidget(plain_label("Source", "pane"))
+        self.source = QTreeWidget()
+        self.source.setHeaderLabels(["Element", "Class"])
+        self.source.header().setStretchLastSection(False)
+        self.source.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self.source.header().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        self.source.itemClicked.connect(lambda item: self.picked.emit(item.data(0, Qt.ItemDataRole.UserRole)))
+        layout.addWidget(self.source, 3)
+
+    def set_tree(self, tree):
+        unchanged = self.tree is not None and tree.get("screen") == self.tree.get("screen")
+        self.tree = tree
+        if unchanged:                     # rebuilding a large tree every poll stalls the UI
+            return
+        self.source.clear()
+        parents = {}
+        for depth, element in source_tree(tree.get("screen", [])):
+            item = QTreeWidgetItem([first_line(element), (element.get("cls") or "").rsplit(".", 1)[-1]])
+            item.setData(0, Qt.ItemDataRole.UserRole, element)
+            if depth and parents.get(depth - 1):
+                parents[depth - 1].addChild(item)
+            else:
+                self.source.addTopLevelItem(item)
+            parents[depth] = item
+        self.source.expandToDepth(3)
+
+    def show_element(self, element):
+        self.element = element
+        self.locators.setRowCount(0)
+        self.attributes.setRowCount(0)
+        if not element:
+            self.title.setText("Nothing a locator can use here.")
+            return
+        self.title.setText(first_line(element) or "(no text)")
+        for locator, count in locator_candidates(element, self.tree["elements"] if self.tree else [element]):
+            self._row(self.locators, locator, "unique" if count == 1 else f"{count} matches")
+        for key, value in element.items():
+            if key != "c":
+                self._row(self.attributes, key, str(value))
+
+    @staticmethod
+    def _row(table, *texts):
+        row = table.rowCount()
+        table.insertRow(row)
+        for column, text in enumerate(texts):
+            table.setItem(row, column, QTableWidgetItem(text))      # items are plain text
+
+    def _act(self, kind):
+        if not self.element:
+            return
+        b = parse_bounds(self.element.get("b"))
+        if not b:
+            return
+        kw = {"x": (b[0] + b[2]) // 2, "y": (b[1] + b[3]) // 2}
+        if kind == "text_should_be":
+            kw["text"] = self.element.get("txt") or self.element.get("a11y") or ""
+        self.act.emit(kind, kw)
+
+
+class RecorderPane(QWidget):
+    """The recorded Robot lines, with Record, Undo, Clear, Copy and Save."""
+
+    edit = Signal(str)                  # "undo" or "clear", run on the worker thread
+
+    def __init__(self, session, theme):
+        super().__init__()
+        self.session, self.t = session, theme
+        layout = QVBoxLayout(self); layout.setContentsMargins(0, 0, 0, 0); layout.setSpacing(0)
+        head = QHBoxLayout(); head.setContentsMargins(10, 6, 10, 6)
+        head.addWidget(plain_label("Recorded steps", "pane")); head.addStretch()
+        self.record_button = QPushButton(icon("record", theme["rec"]), "Recording")
+        self.record_button.setCheckable(True); self.record_button.setChecked(True)
+        self.record_button.toggled.connect(self._record)
+        self.undo_button = QPushButton(icon("undo", theme["ink"]), "Undo")
+        self.undo_button.setToolTip("Removes the last line; the action on the device is not undone")
+        self.clear_button = QPushButton(icon("clear", theme["ink"]), "Clear")
+        copy = QPushButton(icon("copy", theme["ink"]), "Copy")
+        self.undo_button.clicked.connect(lambda: self.edit.emit("undo"))
+        self.clear_button.clicked.connect(lambda: self.edit.emit("clear"))
+        copy.clicked.connect(lambda: QGuiApplication.clipboard().setText(self.session.robot(self.name.text())))
+        for button in (self.record_button, self.undo_button, self.clear_button, copy):
+            head.addWidget(button)
+        layout.addLayout(head)
+        self.lines = QListWidget()
+        self.lines.setFont(QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont))
+        self.lines.setWordWrap(True)
+        layout.addWidget(self.lines, 1)
+        self.empty = plain_label("Act on the device: each step becomes a Robot Framework line here.", "empty")
+        self.empty.setContentsMargins(10, 6, 10, 6); self.empty.setWordWrap(True)
+        layout.addWidget(self.empty)
+        foot = QHBoxLayout(); foot.setContentsMargins(10, 6, 10, 10)
+        foot.addWidget(plain_label("Test name", "name_label"))
+        self.name = QLineEdit("Recorded Test")
+        foot.addWidget(self.name, 1)
+        save = QPushButton(icon("save", theme["ink"]), "Save...")
+        save.clicked.connect(self.save)
+        foot.addWidget(save)
+        layout.addLayout(foot)
+
+    def _record(self, on):
+        self.session.recording = on
+        self.record_button.setText("Recording" if on else "Paused")
+
+    def show_lines(self, lines, stamp=False):
+        self.lines.clear()
+        for number, line in enumerate(lines, 1):
+            item = QListWidgetItem(f"{number:>3}  {line}")
+            if "# GAP" in line:
+                item.setForeground(QColor(self.t["warn"]))
+            self.lines.addItem(item)
+        self.empty.setVisible(not lines)
+        if stamp and lines:
+            last = self.lines.item(self.lines.count() - 1)
+            last.setBackground(QColor(self.t["rec_soft"]))
+            self.lines.scrollToBottom()
+            QTimer.singleShot(700, lambda: last.setBackground(QBrush()) if self.lines.count() else None)
+
+    def save(self):
+        path, _ = QFileDialog.getSaveFileName(self, "Save the recorded test", "recorded.robot", "Robot Framework (*.robot)")
+        if not path:
+            return
+        if not path.endswith(".robot"):
+            path += ".robot"
+        with open(path, "w", encoding="utf-8", newline="\n") as f:
+            f.write(self.session.robot(self.name.text()))
+        self.window().statusBar().showMessage(f"Saved {path}", 5000)
+
+
+class MainWindow(QMainWindow):
+    def __init__(self, session, worker, device_name="", platform="android"):
+        super().__init__()
+        self.session, self.worker, self.platform = session, worker, platform
+        self.live, self.pending = False, 0
+        self.t = apply_theme(QApplication.instance())
+        self.setWindowTitle(f"MaestroLibrary Studio - {device_name} (keep Robot runs off this device while it is open)")
+        self.device = DeviceView(self.t)
+        self.inspector = InspectorPane()
+        self.recorder = RecorderPane(session, self.t)
+        self._toolbar(device_name)
+        split = QSplitter()
+        for widget in (self.device, self.inspector, self.recorder):
+            split.addWidget(widget)
+        split.setSizes([520, 430, 530])                  # the device screen leads
+        split.setChildrenCollapsible(False)
+        self.setCentralWidget(split)
+        self.hover = plain_label("", "hover")
+        self.message = plain_label("", "message")
+        self.statusBar().addWidget(self.message, 1)
+        self.statusBar().addPermanentWidget(self.hover)
+        # wiring
+        self.device.act.connect(self.submit)
+        self.inspector.act.connect(self.submit)
+        self.device.selected.connect(self.inspector.show_element)
+        self.inspector.picked.connect(self._pick)
+        self.device.hovered.connect(self.hover.setText)
+        self.recorder.edit.connect(worker.edit)
+        worker.edited.connect(lambda: self.recorder.show_lines(self.session.lines))
+        worker.recorded.connect(self._recorded)
+        worker.failed.connect(self.error)
+        worker.tree.connect(self._tree)
+        worker.done.connect(self._done)
+        worker.image.connect(self.device.set_frame)
+        self.poll = QTimer(self)
+        self.poll.timeout.connect(lambda: worker.poll.emit() if not self.pending else None)
+        self.poll.start(5000)                 # each read waits for the screen to settle (up to 3 s)
+        self.recorder.show_lines(session.lines)
+
+    def _toolbar(self, device_name):
+        bar = QToolBar("Studio"); bar.setObjectName("shell"); bar.setMovable(False)
+        bar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        bar.setIconSize(QSize(16, 16))
+        self.addToolBar(bar)
+        ink = self.t["shell_ink"]
+        bar.addWidget(plain_label("MaestroLibrary Studio", "product"))
+        self.state = plain_label(f"{device_name}: connecting", "state")
+        bar.addWidget(self.state)
+        bar.addSeparator()
+        modes = QActionGroup(self); modes.setExclusive(True)
+        self.act_mode = QAction(icon("act", ink), "Act", self, checkable=True, checked=True)
+        self.act_mode.setToolTip("Click, drag and type act on the device and are recorded")
+        self.inspect_mode = QAction(icon("inspect", ink), "Inspect", self, checkable=True)
+        self.inspect_mode.setToolTip("Click selects an element; nothing runs on the device")
+        for action, mode in ((self.act_mode, "act"), (self.inspect_mode, "inspect")):
+            modes.addAction(action); bar.addAction(action)
+            action.triggered.connect(lambda _=False, m=mode: self._mode(m))
+        self.handles = QAction(icon("grid", ink), "Elements", self, checkable=True)
+        self.handles.setToolTip("Outline every element a locator can find")
+        self.handles.toggled.connect(lambda on: (setattr(self.device, "handles", on), self.device.update()))
+        bar.addAction(self.handles)
+        spacer = QWidget(); spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        bar.addWidget(spacer)
+        for kind, name, text, tip in (("launch", "launch", "Launch", "Open Application (restarts the app)"),
+                                      ("back", "back", "Back", "Go Back (Android)"),
+                                      ("hide_keyboard", "keyboard", "Keyboard", "Hide Keyboard"),
+                                      ("screenshot", "camera", "Screenshot", "Capture Page Screenshot")):
+            action = QAction(icon(name, ink), text, self)
+            action.setToolTip(tip)
+            action.triggered.connect(lambda _=False, k=kind: (self.device.flush_typing(), self.submit(k, {})))
+            action.setEnabled(not (kind == "back" and self.platform == "ios"))
+            bar.addAction(action)
+        self.secret = QAction(icon("lock", ink), "Secret", self, checkable=True)
+        self.secret.setToolTip("Typed text is recorded as ${PASSWORD} and never shown")
+        self.secret.toggled.connect(lambda on: (setattr(self.device, "secret", on), self.device.update()))
+        bar.addAction(self.secret)
+
+    def _mode(self, mode):
+        self.device.mode = mode
+        self.device.pick = None
+        self.device.update()
+
+    def _pick(self, element):
+        self.device.pick = element
+        self.device.update()
+        self.inspector.show_element(element)
+
+    def submit(self, kind, kwargs):
+        self.pending += 1
+        self.message.setText(f"Running {self.pending} step{'s' if self.pending > 1 else ''}")
+        self.worker.request.emit(kind, kwargs)
+
+    def _recorded(self, line):
+        self.recorder.show_lines(self.session.lines, stamp=line is not None)
+        if line is not None:
+            self.device.flash()
+        self.message.setText("Recorded" if line is not None else "Ran (recording is paused)")
+
+    def _tree(self, tree):
+        self.device.set_tree(tree)
+        self.inspector.set_tree(tree)
+
+    def _done(self):
+        self.pending = max(0, self.pending - 1)
+
+    def error(self, text):
+        self.message.setText(text)
+        self.message.setStyleSheet(f"color: {self.t['rec']};")
+        QTimer.singleShot(6000, lambda: self.message.setStyleSheet(""))
+
+    def show_newest(self, reader):
+        image, _ = reader.take()
+        if image is not None:
+            self.go_live(image)
+
+    def go_live(self, image):
+        if not self.live:
+            self.live = self.worker.live = True
+            self.state.setText(self.state.text().split(":")[0] + ": live")
+        self.device.set_frame(image)
+
+    def fallback(self, reason):
+        self.live = self.worker.live = False
+        self.state.setText(self.state.text().split(":")[0] + ": screenshots")
+        self.state.setToolTip(html.escape(reason))      # tooltips detect rich text: keep it plain
+        self.error(reason)
+        self.worker.snap.emit()

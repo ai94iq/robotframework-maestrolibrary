@@ -146,12 +146,14 @@ class SessionTest(unittest.TestCase):
         self.assertEqual(self.s.lines, [])
         self.assertEqual(self.lib.ran, [("go_back", [])])
 
-    def test_stale_tree_refreshes(self):
+    def test_tree_is_read_again_only_after_a_step_or_when_fresh(self):
         calls = []
         self.lib.screen = lambda: calls.append(1) or SCREEN
-        with mock.patch("MaestroLibrary.studio.time.monotonic", side_effect=[0, 0.5, 5, 5]):
-            self.s.tree(); self.s.tree(); self.s.tree()    # fetched at 0; 0.5 s old: kept; 5 s old: fetched
-        self.assertEqual(len(calls), 2)
+        self.s.tree(); self.s.tree()                     # cached: Maestro's settle wait costs seconds
+        self.assertEqual(len(calls), 1)
+        self.s.act("back"); self.s.tree()                # a step changed the screen
+        self.s.tree(fresh=True)                          # the window's poll
+        self.assertEqual(len(calls), 3)
 
     def test_undo_clear_and_robot_file(self):
         self.s.act("back"); self.s.act("hide_keyboard"); self.s.undo()
@@ -171,19 +173,27 @@ class StreamTest(unittest.TestCase):
                 mock.patch.object(stream.socket, "create_connection", return_value=sock), \
                 mock.patch.object(stream.time, "sleep"), \
                 mock.patch.object(stream, "server_file", return_value=("/x/scrcpy-server", "5.0")):
-            s = stream.ScrcpyStream("adb", "SER", port=27183)
+            run.return_value.stdout = b"40123\n"                    # adb forward tcp:0 prints the port it chose
+            s = stream.ScrcpyStream("adb", "SER")
             s.start()
             cmds = [c.args[0] for c in run.call_args_list]
             self.assertIn(["adb", "-s", "SER", "push", "/x/scrcpy-server", "/data/local/tmp/scrcpy-server.jar"], cmds)
-            self.assertIn(["adb", "-s", "SER", "forward", "tcp:27183", "localabstract:scrcpy"], cmds)
+            self.assertIn(["adb", "-s", "SER", "forward", "tcp:0", f"localabstract:scrcpy_{s.scid}"], cmds)
+            self.assertRegex(s.scid, r"^[0-9a-f]{8}$")
+            self.assertEqual(s.port, 40123)
             launched = popen.call_args.args[0]
-            self.assertEqual(launched[:9], ["adb", "-s", "SER", "shell", "CLASSPATH=/data/local/tmp/scrcpy-server.jar",
-                                            "app_process", "/", "com.genymobile.scrcpy.Server", "5.0"])
+            self.assertEqual(launched[:10], ["adb", "-s", "SER", "shell", "CLASSPATH=/data/local/tmp/scrcpy-server.jar",
+                                             "app_process", "/", "com.genymobile.scrcpy.Server", "5.0", f"scid={s.scid}"])
             self.assertIn("raw_stream=true", launched)
-            self.assertEqual(s.read(), b"\0\0\0\1\x67")           # the probe's bytes are not lost
+            self.assertFalse(any(a.startswith("video_encoder=") for a in launched))
+            self.assertEqual(s.read(), b"\0\0\0\1\x67")             # the probe's bytes are not lost
             s.stop()
-            self.assertIn(["adb", "-s", "SER", "forward", "--remove", "tcp:27183"],
+            self.assertIn(["adb", "-s", "SER", "forward", "--remove", "tcp:40123"],
                           [c.args[0] for c in run.call_args_list])
+            self.assertNotEqual(stream.ScrcpyStream("adb", "SER").scid, s.scid)
+            sock.recv.side_effect = [b"\0\0\0\1\x67"]
+            stream.ScrcpyStream("adb", "SER", video_encoder="OMX.qcom.video.encoder.avc").start()
+            self.assertIn("video_encoder=OMX.qcom.video.encoder.avc", popen.call_args.args[0])
 
     def test_shell_arguments_are_validated(self):
         from MaestroLibrary import stream
@@ -191,6 +201,8 @@ class StreamTest(unittest.TestCase):
             stream.ScrcpyStream("adb", "SER;reboot")
         with self.assertRaisesRegex(ValueError, "max_size"):
             stream.ScrcpyStream("adb", "SER", max_size="1080;reboot")
+        with self.assertRaisesRegex(ValueError, "encoder"):
+            stream.ScrcpyStream("adb", "SER", video_encoder="OMX.x;reboot")
         with mock.patch.object(stream, "server_file", return_value=("/x/s", "5.0;reboot")), \
                 mock.patch.object(stream.subprocess, "run"), mock.patch.object(stream.subprocess, "Popen") as popen:
             with self.assertRaisesRegex(ValueError, "version"):

@@ -1,17 +1,19 @@
 """Maestro Studio-style recorder: act on the live device screen and get Robot Framework lines.
 
-    python -m MaestroLibrary.studio [--device ID] [--app APP_ID]
+    pip install "robotframework-maestrolibrary[studio]"
+    python -m MaestroLibrary.studio [--device ID] [--app APP_ID] [--max-size PX] [--video-encoder NAME]
 
 Do not run it while a Robot run uses the same device: Maestro allows one session per device.
 """
+import argparse
+import base64
+import sys
 import threading
-import time
 
 from .flow2robot import SEP, escape
 from .locators import best_locator, element_at, parse_bounds, walk
 from .recorder import MASKED_INPUT
 
-TREE_MAX_AGE_S = 1.0
 GAP = "    # GAP: no unique locator, ask for a test id"
 ELEMENT_KINDS = {"click": "click_element", "long_press": "long_press",
                  "wait_visible": "wait_until_page_contains_element",
@@ -43,19 +45,18 @@ class Session:
     def __init__(self, lib, app_id=None):
         self.lib, self.app_id, self.lines, self.recording = lib, app_id, [], True
         self.lock = threading.RLock()   # one Maestro session: one action at a time
-        self._tree, self._at, self._last_locator = None, 0.0, None
+        self._tree, self._last_locator = None, None
 
     def tree(self, fresh=False):
-        """The current screen (nested and flat) and its size, fetched again when older than a second."""
+        """The current screen (nested and flat) and its size; read again after a step, or when `fresh`."""
         with self.lock:
-            if fresh or self._tree is None or time.monotonic() - self._at > TREE_MAX_AGE_S:
+            if fresh or self._tree is None:
                 screen = self.lib.screen()
                 elements = list(walk(screen))
                 root = max((parse_bounds(e.get("b")) or (0, 0, 0, 0) for e in elements),
                            key=lambda b: b[2] * b[3], default=(0, 0, 0, 0))
                 self._tree = {"screen": screen, "elements": elements, "width": root[2] or 1, "height": root[3] or 1,
                               "platform": getattr(self.lib, "platform", None)}
-                self._at = time.monotonic()
             return self._tree
 
     def _pct(self, x, y):
@@ -135,3 +136,68 @@ class Session:
         title = "\\" + title if title.startswith("*") else title      # a leading * would start a section
         return "\n".join(["*** Settings ***", "Library    MaestroLibrary", "", "*** Test Cases ***", title]
                          + [SEP + line for line in self.lines]) + "\n"
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(prog="python -m MaestroLibrary.studio", description=__doc__,
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--device", help="Maestro device id; default: the first connected device")
+    parser.add_argument("--app", help="app id to launch first (recorded as Open Application)")
+    parser.add_argument("--max-size", type=int, default=1080, help="live view size, longest side in px (default 1080)")
+    parser.add_argument("--video-encoder", help="device video encoder for the live view, if the default misbehaves "
+                                                "(list them with: scrcpy --list-encoders)")
+    args = parser.parse_args(argv)
+    try:
+        from PySide6.QtCore import QThread
+        from PySide6.QtWidgets import QApplication
+
+        from . import studio_qt
+    except ImportError as err:
+        print(f'Studio needs its extra: pip install "robotframework-maestrolibrary[studio]" ({err})', file=sys.stderr)
+        return 2
+    from . import MaestroLibrary
+    from .stream import ScrcpyStream
+
+    app = QApplication.instance() or QApplication(sys.argv[:1])
+    lib = MaestroLibrary(device=args.device, run_on_failure="Nothing", logcat=False)
+    reader = thread = None
+    try:
+        device = lib.device_id()
+        session = Session(lib, args.app)
+        worker = studio_qt.ActionWorker(session)
+        thread = QThread()
+        worker.moveToThread(thread)
+        thread.start()
+
+        def screenshot():
+            content = lib.mcp.call_tool("take_screenshot", {"device_id": device})
+            data = next(c["data"] for c in content if c.get("type") == "image")
+            return studio_qt.QImage.fromData(base64.b64decode(data))
+
+        window = studio_qt.MainWindow(session, worker, device_name=device, platform=lib.platform)
+        worker.screenshot = screenshot
+        window.resize(1480, 940)
+        window.show()
+        if lib.platform == "android" and lib.adb():
+            reader = studio_qt.StreamReader(ScrcpyStream(lib.adb(), device, max_size=args.max_size,
+                                                             video_encoder=args.video_encoder))
+            reader.ready.connect(lambda: window.show_newest(reader))
+            reader.failed.connect(window.fallback)
+            reader.start()
+        else:
+            window.fallback("The live view is Android only (and needs adb); showing screenshots after each step.")
+        if args.app:
+            window.submit("launch", {})
+        worker.poll.emit()
+        return app.exec()
+    finally:
+        if reader:
+            reader.stop()
+        if thread:
+            thread.quit()
+            thread.wait(10000)
+        lib.mcp.close()
+
+
+if __name__ == "__main__":
+    sys.exit(main())
