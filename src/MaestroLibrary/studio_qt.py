@@ -206,11 +206,11 @@ class StreamReader(QThread):
 # Design tokens: one set of names for both themes, so every widget and painter reads the same palette.
 THEMES = {
     "light": {"ground": "#e9ecf1", "panel": "#ffffff", "raised": "#f4f6f9", "hover": "#eceff4", "line": "#d6dae3",
-              "ink": "#14171c", "ink2": "#566070", "ink3": "#9097a5", "accent": "#4361ee", "accent_soft": "#e4e9fd",
+              "ink": "#0f1216", "ink2": "#5a6372", "ink3": "#757d8c", "accent": "#4361ee", "accent_soft": "#e4e9fd",
               "accent_ink": "#ffffff", "rec": "#e5484d", "rec_soft": "#fde4e5", "ok": "#15803d", "ok_soft": "#dcf5e5",
               "warn": "#b45309", "warn_soft": "#fdebd0", "select": "#4361ee", "screen": "#0b0d10", "shadow_alpha": 70, "shadow_blur": 28, "shadow_y": 6, "edge": "#d6dae3"},
     "dark": {"ground": "#050608", "panel": "#181c24", "raised": "#20252f", "hover": "#2a303c", "line": "#303746",
-             "ink": "#eef0f4", "ink2": "#b7bfcc", "ink3": "#858e9e", "accent": "#7b93ff", "accent_soft": "#252d4d",
+             "ink": "#f5f7fa", "ink2": "#a3acba", "ink3": "#7d8696", "accent": "#7b93ff", "accent_soft": "#252d4d",
              "accent_ink": "#0d0f13", "rec": "#ff6369", "rec_soft": "#3a1d20", "ok": "#3ecf8e", "ok_soft": "#16342a",
              "warn": "#f5b14c", "warn_soft": "#3b2d14", "select": "#7b93ff", "screen": "#000000", "shadow_alpha": 230, "shadow_blur": 44, "shadow_y": 12, "edge": "#3d4555"},
 }
@@ -246,12 +246,12 @@ QToolBar#shell QFrame#seg QToolButton:hover {{ background: {hover}; }}
 QToolBar#shell QFrame#seg QToolButton:checked {{ background: {accent}; color: {accent_ink}; }}
 QFrame#pill {{ background: {raised}; border: 1px solid {line}; border-radius: 14px; }}
 QFrame#pill QLabel {{ background: transparent; }}
-QLabel#product {{ font-size: 16px; font-weight: 700; padding-right: 8px; }}
+QLabel#product {{ font-size: 17px; font-weight: 700; padding-right: 8px; }}
 QLabel#state {{ color: {ink}; }}
-QLabel#pane {{ font-size: 12px; font-weight: 600; color: {ink2}; }}
+QLabel#pane {{ font-size: 12px; font-weight: 500; color: {ink2}; }}
 QLabel#hint {{ background: {panel}; border: 1px solid {line}; border-radius: 14px; color: {ink2};
     padding: 6px 14px; }}
-QLabel#title {{ font-size: 15px; font-weight: 600; }}
+QLabel#title {{ font-size: 17px; font-weight: 700; color: {ink}; }}
 QLabel#title[empty="true"] {{ font-size: 13px; font-weight: 400; color: {ink2}; }}
 QLabel#empty {{ color: {ink2}; }}
 QPushButton {{ background: {raised}; border: 1px solid {line}; border-radius: 8px; padding: 6px 12px; }}
@@ -264,7 +264,7 @@ QPushButton#primary:hover {{ background: {select}; }}
 QLineEdit {{ background: {raised}; border: 1px solid {line}; border-radius: 8px; padding: 6px 10px;
     selection-background-color: {accent_soft}; selection-color: {ink}; }}
 QLineEdit:focus {{ border-color: {accent}; background: {panel}; }}
-QLineEdit#testname {{ background: transparent; border: 1px solid transparent; font-size: 16px; font-weight: 600;
+QLineEdit#testname {{ background: transparent; border: 1px solid transparent; font-size: 17px; font-weight: 700;
     padding: 6px 8px; }}
 QLineEdit#testname:hover {{ border-color: {line}; }}
 QLineEdit#testname:focus {{ border-color: {accent}; background: {raised}; }}
