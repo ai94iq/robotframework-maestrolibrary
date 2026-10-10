@@ -1,5 +1,6 @@
 import os
 import sys
+import tempfile
 import unittest
 from unittest import mock
 
@@ -150,6 +151,60 @@ class SessionTest(unittest.TestCase):
                          "*** Settings ***\nLibrary    MaestroLibrary\n\n*** Test Cases ***\nMy Test\n    Go Back\n")
         self.s.clear()
         self.assertEqual(self.s.lines, [])
+
+
+class StreamTest(unittest.TestCase):
+    def test_start_pushes_forwards_launches_and_stop_cleans_up(self):
+        from MaestroLibrary import stream
+        sock = mock.Mock()
+        sock.recv.side_effect = [b"", b"\0\0\0\1\x67"]           # the first connect is closed: not ready yet
+        with mock.patch.object(stream.subprocess, "run") as run, \
+                mock.patch.object(stream.subprocess, "Popen") as popen, \
+                mock.patch.object(stream.socket, "create_connection", return_value=sock), \
+                mock.patch.object(stream.time, "sleep"), \
+                mock.patch.object(stream, "server_file", return_value=("/x/scrcpy-server", "5.0")):
+            s = stream.ScrcpyStream("adb", "SER", port=27183)
+            s.start()
+            cmds = [c.args[0] for c in run.call_args_list]
+            self.assertIn(["adb", "-s", "SER", "push", "/x/scrcpy-server", "/data/local/tmp/scrcpy-server.jar"], cmds)
+            self.assertIn(["adb", "-s", "SER", "forward", "tcp:27183", "localabstract:scrcpy"], cmds)
+            launched = popen.call_args.args[0]
+            self.assertEqual(launched[:9], ["adb", "-s", "SER", "shell", "CLASSPATH=/data/local/tmp/scrcpy-server.jar",
+                                            "app_process", "/", "com.genymobile.scrcpy.Server", "5.0"])
+            self.assertIn("raw_stream=true", launched)
+            self.assertEqual(s.read(), b"\0\0\0\1\x67")           # the probe's bytes are not lost
+            s.stop()
+            self.assertIn(["adb", "-s", "SER", "forward", "--remove", "tcp:27183"],
+                          [c.args[0] for c in run.call_args_list])
+
+    def test_shell_arguments_are_validated(self):
+        from MaestroLibrary import stream
+        with self.assertRaisesRegex(ValueError, "device"):
+            stream.ScrcpyStream("adb", "SER;reboot")
+        with self.assertRaisesRegex(ValueError, "max_size"):
+            stream.ScrcpyStream("adb", "SER", max_size="1080;reboot")
+        with mock.patch.object(stream, "server_file", return_value=("/x/s", "5.0;reboot")), \
+                mock.patch.object(stream.subprocess, "run"), mock.patch.object(stream.subprocess, "Popen") as popen:
+            with self.assertRaisesRegex(ValueError, "version"):
+                stream.ScrcpyStream("adb", "SER").start()
+            popen.assert_not_called()
+
+    def test_server_file_lookup(self):
+        from MaestroLibrary import stream
+        with mock.patch.object(stream.shutil, "which", return_value=None):
+            with self.assertRaisesRegex(RuntimeError, "scrcpy is not on PATH"):
+                stream.server_file()
+        with tempfile.TemporaryDirectory() as tmp:
+            exe, server = os.path.join(tmp, "scrcpy"), os.path.join(tmp, "scrcpy-server")
+            open(server, "w").close()
+            answer = mock.Mock(stdout="scrcpy 5.0 <https://github.com/Genymobile/scrcpy>\n")
+            with mock.patch.object(stream.shutil, "which", return_value=exe), \
+                    mock.patch.object(stream.subprocess, "run", return_value=answer), \
+                    mock.patch.dict(os.environ, {"SCRCPY_SERVER_PATH": ""}):
+                self.assertEqual(stream.server_file(), (server, "5.0"))
+                os.remove(server)
+                with self.assertRaisesRegex(RuntimeError, "SCRCPY_SERVER_PATH"):
+                    stream.server_file()
 
 
 class EscapeTest(unittest.TestCase):

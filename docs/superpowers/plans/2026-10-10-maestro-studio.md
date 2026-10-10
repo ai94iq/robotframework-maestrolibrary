@@ -34,6 +34,7 @@ Its screen is static between refreshes unless you set up MJPEG. Ours is live thr
 | `adb exec-out screencap -p` | 2.2 s | PNG |
 | `adb exec-out screencap` (raw) | 0.8-1.0 s | 10 MB per frame |
 | MCP `inspect_screen` | 0.36 s | gives bounds in device pixels, e.g. `[0,2274][1080,2400]` |
+| scrcpy-server 5.0 raw stream (Task 3 spike) | live | `app_process / com.genymobile.scrcpy.Server 5.0 tunnel_forward=true audio=false control=false raw_stream=true video_codec=h264 max_size=1080`; first bytes after ~1.5-1.8 s (adb accepts the forward before the server listens, so wait for bytes); NAL 7, 8, 5 then 1; codec avc1.42800a; the server exits with the adb shell |
 
 None of the screenshot sources is fast enough to feel live, so the plan uses scrcpy's stream. `scrcpy-server` sits next to `scrcpy.exe` (here `C:\adb\scrcpy-server`), and `SCRCPY_SERVER_PATH` overrides it.
 
