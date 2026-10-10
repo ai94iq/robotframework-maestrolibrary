@@ -435,12 +435,28 @@ class LiveStateTest(WindowCase):
         acts = []
         self.window.inspector.act.disconnect()
         self.window.inspector.act.connect(lambda kind, kw: acts.append((kind, kw)))
-        for button in self.window.inspector.findChildren(studio_qt_button()):
-            if button.text() == "Text should be":
-                button.click()
+        for action in self.window.inspector.assert_menu.actions():
+            if action.text() == "Text should be":
+                action.trigger()
         self.assertEqual(acts, [("text_should_be", {"x": 540, "y": 200, "text": "Search"})])
         self.window.handles.setChecked(True)
         self.window.device.repaint()
+
+    def test_attributes_are_collapsed_until_asked_for(self):
+        inspector = self.window.inspector
+        inspector.show_element(self.session.tree()["elements"][1])
+        self.assertTrue(inspector.attr_head.isVisibleTo(inspector))
+        self.assertFalse(inspector.attributes.isVisibleTo(inspector))
+        inspector.attr_toggle.setChecked(True)
+        self.assertTrue(inspector.attributes.isVisibleTo(inspector))
+
+    def test_focus_ring_only_for_keyboard_focus(self):
+        from PySide6.QtCore import Qt
+        self.view.setFocus(Qt.FocusReason.MouseFocusReason)
+        self.assertFalse(self.view._ring)
+        self.view.clearFocus()
+        self.view.setFocus(Qt.FocusReason.TabFocusReason)
+        self.assertTrue(self.view._ring)
 
     def test_delete_removes_the_selected_line(self):
         from PySide6.QtCore import Qt
@@ -459,11 +475,6 @@ class LiveStateTest(WindowCase):
         self.assertIn("Nothing selected", inspector.title.text())
         self.window.inspect_mode.trigger()
         self.assertTrue(self.window.hint.text().startswith("Inspect"))
-
-
-def studio_qt_button():
-    from PySide6.QtWidgets import QPushButton
-    return QPushButton
 
 
 class SourceTreeTest(unittest.TestCase):

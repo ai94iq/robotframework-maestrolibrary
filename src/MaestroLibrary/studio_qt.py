@@ -231,12 +231,18 @@ QWidget {{ color: {ink}; font-size: 13px; }}
 QMainWindow, QWidget#ground {{ background: {ground}; }}
 QFrame#card {{ background: {panel}; border: 1px solid {line}; border-top-color: {edge}; border-radius: 14px; }}
 QToolBar#shell {{ background: {panel}; border: 0; border-bottom: 1px solid {line}; padding: 10px 16px; spacing: 4px; }}
-QToolBar#shell QToolButton {{ background: transparent; border: 1px solid transparent; border-radius: 8px;
+QToolBar#shell QToolButton, QFrame#controls QToolButton {{ background: transparent; border: 1px solid transparent; border-radius: 8px;
     padding: 6px 10px; color: {ink}; }}
-QToolBar#shell QToolButton:hover {{ background: {hover}; }}
-QToolBar#shell QToolButton:checked {{ background: {accent_soft}; color: {accent}; }}
-QToolBar#shell QToolButton:disabled {{ color: {ink3}; }}
-QToolBar#shell QToolButton:focus {{ border-color: {accent}; }}
+QToolBar#shell QToolButton:hover, QFrame#controls QToolButton:hover {{ background: {hover}; }}
+QToolBar#shell QToolButton:checked, QFrame#controls QToolButton:checked {{ background: {accent_soft}; color: {accent}; }}
+QToolBar#shell QToolButton:disabled, QFrame#controls QToolButton:disabled {{ color: {ink3}; }}
+QToolBar#shell QToolButton:focus, QFrame#controls QToolButton:focus {{ border-color: {accent}; }}
+QFrame#controls QToolButton {{ padding: 4px 6px; font-size: 12px; }}
+QToolButton#tool, QToolButton#disclosure {{ background: transparent; border: 1px solid transparent; border-radius: 6px;
+    padding: 4px; color: {ink2}; }}
+QToolButton#disclosure {{ padding: 4px 6px; font-size: 12px; font-weight: 600; }}
+QToolButton#tool:hover, QToolButton#disclosure:hover {{ background: {hover}; }}
+QToolButton#tool:focus, QToolButton#disclosure:focus {{ border-color: {accent}; }}
 QToolBar#shell QToolButton::menu-indicator {{ image: none; width: 0px; }}
 QToolBar#shell QToolButton[popupMode="2"] {{ padding-right: 10px; }}
 QToolBar::separator {{ background: {line}; width: 1px; margin: 6px 8px; }}
@@ -249,8 +255,7 @@ QFrame#pill QLabel {{ background: transparent; }}
 QLabel#product {{ font-size: 17px; font-weight: 700; padding-right: 8px; }}
 QLabel#state {{ color: {ink}; }}
 QLabel#pane {{ font-size: 12px; font-weight: 500; color: {ink2}; }}
-QLabel#hint {{ background: {panel}; border: 1px solid {line}; border-radius: 14px; color: {ink2};
-    padding: 6px 14px; }}
+QLabel#hint, QLabel#hover, QLabel#message {{ color: {ink2}; font-size: 12px; }}
 QLabel#title {{ font-size: 17px; font-weight: 700; color: {ink}; }}
 QLabel#title[empty="true"] {{ font-size: 13px; font-weight: 400; color: {ink2}; }}
 QLabel#empty {{ color: {ink2}; }}
@@ -258,7 +263,10 @@ QPushButton {{ background: {raised}; border: 1px solid {line}; border-radius: 8p
 QPushButton:hover {{ background: {hover}; }}
 QPushButton:pressed {{ background: {line}; }}
 QPushButton:focus {{ border-color: {accent}; }}
-QPushButton:checked {{ background: {rec_soft}; color: {rec}; border-color: {rec}; font-weight: 600; }}
+QPushButton#recording {{ background: transparent; border: 1px solid transparent; padding: 4px 8px; color: {ink2}; }}
+QPushButton#recording:hover {{ background: {hover}; }}
+QPushButton#recording:checked {{ color: {ink}; font-weight: 600; }}
+QPushButton#recording:focus {{ border-color: {accent}; }}
 QPushButton#primary {{ background: {accent}; color: {accent_ink}; border-color: {accent}; font-weight: 600; }}
 QPushButton#primary:hover {{ background: {select}; }}
 QLineEdit {{ background: {raised}; border: 1px solid {line}; border-radius: 8px; padding: 6px 10px;
@@ -299,9 +307,6 @@ QMenu::item:disabled {{ color: {ink2}; }}
 QMenu::separator {{ height: 1px; background: {line}; margin: 4px 8px; }}
 QMenu::indicator {{ width: 0; }}
 QToolTip {{ background: {raised}; color: {ink}; border: 1px solid {line}; border-radius: 6px; padding: 4px 8px; }}
-QStatusBar {{ background: {panel}; border-top: 1px solid {line}; }}
-QStatusBar::item {{ border: 0; }}
-QStatusBar QLabel {{ color: {ink2}; padding: 2px 8px; }}
 """
 
 
@@ -393,17 +398,23 @@ def chevrons(color):
     return paths
 
 
-def dot_pixmap(color, size=10):
-    """A filled status dot, antialiased at the screen's pixel ratio."""
+def dot_pixmap(color, size=10, hollow=False):
+    """A filled (or hollow) status dot, antialiased at the screen's pixel ratio."""
     screen = QGuiApplication.primaryScreen()
     ratio = max(2.0, screen.devicePixelRatio() if screen else 2.0)
     pm = QPixmap(round(size * ratio), round(size * ratio))
     pm.fill(Qt.GlobalColor.transparent)
     p = QPainter(pm)
     p.setRenderHint(QPainter.RenderHint.Antialiasing)
-    p.setPen(Qt.PenStyle.NoPen)
-    p.setBrush(QColor(color))
-    p.drawEllipse(QRectF(0, 0, size * ratio, size * ratio))
+    box = QRectF(0, 0, size * ratio, size * ratio)
+    if hollow:
+        p.setPen(QPen(QColor(color), 1.5 * ratio))
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        box = box.adjusted(ratio, ratio, -ratio, -ratio)
+    else:
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QColor(color))
+    p.drawEllipse(box)
     p.end()
     pm.setDevicePixelRatio(ratio)
     return pm
@@ -436,11 +447,24 @@ class DeviceView(QWidget):
         self.t = theme
         self.image, self.tree, self.mode, self.handles, self.secret = None, None, "act", False, False
         self.hover = self.pick = self._down = None
-        self.typed, self._flash = "", False
+        self.typed, self._flash, self._ring = "", False, False
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setMouseTracking(True)
         self.setMinimumSize(280, 400)
         self.setAccessibleName("Device screen")
+
+    def sizeHint(self):
+        return QSize(340, 700)
+
+    def focusInEvent(self, event):
+        self._ring = event.reason() in (Qt.FocusReason.TabFocusReason, Qt.FocusReason.BacktabFocusReason)
+        super().focusInEvent(event)
+        self.update()
+
+    def focusOutEvent(self, event):
+        self._ring = False
+        super().focusOutEvent(event)
+        self.update()
 
     # state
     def set_frame(self, image):
@@ -525,12 +549,10 @@ class DeviceView(QWidget):
                 c = QColor(self.t["select"]); c.setAlpha(fill); p.setBrush(c)
                 c.setAlpha(line); p.setPen(QPen(c, width))
                 p.drawRoundedRect(box.adjusted(width / 2, width / 2, -width / 2, -width / 2), 6, 6)
-        p.setPen(QPen(QColor(self.t["rec"] if self._flash else self.t["line"]), 4 if self._flash else 2))
+        key = "rec" if self._flash else "select" if self._ring else "line"      # one frame: line, rec flash, key focus
+        p.setPen(QPen(QColor(self.t[key]), 1.5 if key == "line" else 2))
         p.setBrush(Qt.BrushStyle.NoBrush)
         p.drawPath(frame)
-        if self.hasFocus():
-            p.setPen(QPen(QColor(self.t["select"]), 2, Qt.PenStyle.DashLine))
-            p.drawRoundedRect(r.adjusted(-6, -6, 6, 6), 20, 20)
         if self.typed:
             box = QRectF(r.x() + 10, r.bottom() - 54, r.width() - 20, 44)
             p.setPen(Qt.PenStyle.NoPen); p.setBrush(QColor(self.t["panel"])); p.drawRoundedRect(box, 8, 8)
@@ -768,14 +790,26 @@ class InspectorPane(QWidget):
     def __init__(self, theme=None):
         super().__init__()
         self.tree, self.element = None, None
+        self.t = theme or THEMES["light"]
         layout = QVBoxLayout(self); layout.setContentsMargins(12, 12, 12, 8); layout.setSpacing(8)
+        layout.addWidget(plain_label("Source (system UI and unlabeled containers left out)", "pane"))
+        self.source = QTreeWidget()
+        self.source.setFrameShape(QFrame.Shape.NoFrame)
+        self.source.setHeaderLabels(["Element", "Class"])
+        self.source.setIndentation(16)
+        self.source.header().setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        self.source.header().setStretchLastSection(False)
+        self.source.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self.source.header().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        self.source.itemClicked.connect(lambda item: self.picked.emit(item.data(0, Qt.ItemDataRole.UserRole)))
+        layout.addWidget(self.source, 1)
         layout.addWidget(plain_label("Selected element", "pane"))
         self.title = plain_label(PICK_HINT, "title")
         self.title.setWordWrap(True)
         layout.addWidget(self.title)
-        self.locators = QTableWidget(0, 2)
-        self.locators.setHorizontalHeaderLabels(["Suggested locator (double-click copies)", "Matches"])
-        self.locators.setItemDelegateForColumn(1, MatchDelegate(theme or THEMES["light"], self.locators))
+        self.locators = QTableWidget(0, 3)
+        self.locators.setHorizontalHeaderLabels(["Suggested locator", "Matches", ""])
+        self.locators.setItemDelegateForColumn(1, MatchDelegate(self.t, self.locators))
         self.attributes = QTableWidget(0, 2)
         self.attributes.setHorizontalHeaderLabels(["Attribute", "Value"])
         for table in (self.locators, self.attributes):
@@ -788,32 +822,38 @@ class InspectorPane(QWidget):
             table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
             table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
             table.setWordWrap(True)
+        self.locators.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
+        self.locators.setColumnWidth(2, 36)
         self.attributes.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        self.locators.cellDoubleClicked.connect(lambda r, c: QGuiApplication.clipboard().setText(self.locators.item(r, 0).text()))
+        self.locators.cellDoubleClicked.connect(lambda r, c: self._copy(r))
         layout.addWidget(self.locators)
         self.actions = QWidget()
-        actions = QGridLayout(self.actions); actions.setContentsMargins(0, 0, 0, 0)
-        actions.setHorizontalSpacing(8); actions.setVerticalSpacing(8)
-        for number, (kind, text) in enumerate((("click", "Tap"), ("long_press", "Long press"),
-                                               ("wait_visible", "Wait visible"),
-                                               ("should_be_visible", "Should be visible"),
-                                               ("text_should_be", "Text should be"))):
-            button = QPushButton(text)
-            button.clicked.connect(lambda _=False, k=kind: self._act(k))
-            actions.addWidget(button, number // 3, number % 3)
+        actions = QHBoxLayout(self.actions); actions.setContentsMargins(0, 0, 0, 0); actions.setSpacing(8)
+        self.tap_button = QPushButton("Tap")
+        self.tap_button.setObjectName("primary")
+        self.tap_button.clicked.connect(lambda: self._act("click"))
+        self.assert_button = QPushButton("Assert")
+        self.assert_menu = QMenu(self.assert_button)
+        for kind, text in (("long_press", "Long press"), ("wait_visible", "Wait until visible"),
+                           ("should_be_visible", "Should be visible"), ("text_should_be", "Text should be")):
+            self.assert_menu.addAction(text).triggered.connect(lambda _=False, k=kind: self._act(k))
+        self.assert_button.setMenu(self.assert_menu)
+        actions.addWidget(self.tap_button); actions.addWidget(self.assert_button); actions.addStretch()
         layout.addWidget(self.actions)
+        self.attr_toggle = QToolButton()
+        self.attr_toggle.setObjectName("disclosure")
+        self.attr_toggle.setText(GAP_SPACE + "Attributes")
+        self.attr_toggle.setCheckable(True)
+        self.attr_toggle.setAutoRaise(True)
+        self.attr_toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.attr_toggle.setIconSize(ICON_SIZE)
+        self.attr_toggle.toggled.connect(lambda _: self._sync())
+        head = QHBoxLayout(); head.setContentsMargins(0, 0, 0, 0)
+        head.addWidget(self.attr_toggle); head.addStretch()
+        self.attr_head = QWidget(); self.attr_head.setLayout(head)
+        layout.addWidget(self.attr_head)
         layout.addWidget(self.attributes)
-        layout.addWidget(plain_label("Source (system UI and unlabeled containers left out)", "pane"))
-        self.source = QTreeWidget()
-        self.source.setFrameShape(QFrame.Shape.NoFrame)
-        self.source.setHeaderLabels(["Element", "Class"])
-        self.source.setIndentation(16)
-        self.source.header().setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        self.source.header().setStretchLastSection(False)
-        self.source.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        self.source.header().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        self.source.itemClicked.connect(lambda item: self.picked.emit(item.data(0, Qt.ItemDataRole.UserRole)))
-        layout.addWidget(self.source, 1)
+        self.retheme()
         self.show_element(None)
 
     def set_tree(self, tree):
@@ -839,12 +879,26 @@ class InspectorPane(QWidget):
         self.source.blockSignals(False)
         self.source.setUpdatesEnabled(True)
 
+    def retheme(self):
+        self.attr_toggle.setIcon(icon("chevron-down" if self.attr_toggle.isChecked() else "chevron-right", self.t["ink2"]))
+        for button in self.locators.findChildren(QToolButton):
+            button.setIcon(icon("copy", self.t["ink2"]))
+
+    def _sync(self):
+        """Attributes stay collapsed until asked for; nothing but the source shows without a selection."""
+        self.retheme()
+        self.attributes.setVisible(self.element is not None and self.attr_toggle.isChecked())
+
+    def _copy(self, row):
+        QGuiApplication.clipboard().setText(self.locators.item(row, 0).text())
+
     def show_element(self, element):
         self.element = element
         self.locators.setRowCount(0)
         self.attributes.setRowCount(0)
-        for widget in (self.locators, self.actions, self.attributes):
+        for widget in (self.locators, self.actions, self.attr_head):
             widget.setVisible(element is not None)
+        self._sync()
         if not element:
             self.title.setText(PICK_HINT)
             self.title.setProperty("empty", True); self.title.style().polish(self.title)
@@ -853,11 +907,20 @@ class InspectorPane(QWidget):
         self.title.setProperty("empty", False); self.title.style().polish(self.title)
         for locator, count in locator_candidates(element, self.tree["elements"] if self.tree else [element]):
             self._row(self.locators, locator, "unique" if count == 1 else f"{count} matches")
+            row = self.locators.rowCount() - 1
+            button = QToolButton()
+            button.setObjectName("tool")
+            button.setAutoRaise(True)
+            button.setIconSize(ICON_SIZE)
+            button.setToolTip("Copy locator")
+            button.clicked.connect(lambda _=False, r=row: self._copy(r))
+            self.locators.setCellWidget(row, 2, button)
         for key, value in element.items():
             if key != "c":
                 self._row(self.attributes, key, str(value))
         for table in (self.locators, self.attributes):
             fit(table)
+        self.retheme()
 
     @staticmethod
     def _row(table, *texts):
@@ -882,6 +945,7 @@ class RecorderPane(QWidget):
     """The recorded Robot lines under an editable test title, with Record, Undo, Clear, Copy and Save."""
 
     edit = Signal(str)                  # "undo" or "clear", run on the worker thread
+    saved = Signal(str)                 # a note for the footer
 
     def __init__(self, session, theme):
         super().__init__()
@@ -895,11 +959,13 @@ class RecorderPane(QWidget):
         head = QHBoxLayout(); head.setSpacing(8); head.setContentsMargins(9, 0, 0, 0)
         head.addWidget(plain_label("Recorded steps", "pane")); head.addStretch()
         self.record_button = QPushButton(GAP_SPACE + "Recording")
+        self.record_button.setObjectName("recording")
         self.record_button.setCheckable(True); self.record_button.setChecked(True)
+        self.record_button.setToolTip("Recording on or off; paused steps still run on the device")
         self.record_button.toggled.connect(self._record)
-        self.undo_button = QPushButton(GAP_SPACE + "Undo")
-        self.undo_button.setToolTip("Removes the last line; the action on the device is not undone")
-        self.clear_button = QPushButton(GAP_SPACE + "Clear")
+        self.undo_button, self.clear_button = QToolButton(), QToolButton()
+        for button, tip in ((self.undo_button, "Undo last line"), (self.clear_button, "Clear all lines")):
+            button.setObjectName("tool"); button.setAutoRaise(True); button.setToolTip(tip); button.setAccessibleName(tip)
         self.undo_button.clicked.connect(lambda: self.edit.emit("undo"))
         self.clear_button.clicked.connect(lambda: self.edit.emit("clear"))
         for button in (self.record_button, self.undo_button, self.clear_button):
@@ -920,7 +986,9 @@ class RecorderPane(QWidget):
         self.empty.setWordWrap(True)
         layout.addWidget(self.empty)
         foot = QHBoxLayout(); foot.setSpacing(8)
-        foot.addStretch()
+        self.message = plain_label("", "message")
+        self.message.setWordWrap(True)
+        foot.addWidget(self.message, 1)
         self.copy_button = QPushButton(GAP_SPACE + "Copy")
         self.copy_button.clicked.connect(lambda: QGuiApplication.clipboard().setText(self.session.robot(self.name.text())))
         save = QPushButton(GAP_SPACE + "Save")
@@ -928,16 +996,19 @@ class RecorderPane(QWidget):
         save.clicked.connect(self.save)
         foot.addWidget(self.copy_button); foot.addWidget(save)
         layout.addLayout(foot)
-        self.icons = [(self.record_button, "record", "rec"), (self.undo_button, "undo", "ink"),
-                      (self.clear_button, "clear", "ink"), (self.copy_button, "copy", "ink"),
-                      (save, "save", "accent_ink")]
-        for button, _, _ in self.icons:
+        self.icons = [(self.undo_button, "undo", "ink2"), (self.clear_button, "clear", "ink2"),
+                      (self.copy_button, "copy", "ink"), (save, "save", "accent_ink")]
+        for button in (self.record_button, *(b for b, _, _ in self.icons)):
             button.setIconSize(ICON_SIZE)
         self.retheme()
 
     def retheme(self):
         for button, name, key in self.icons:
             button.setIcon(icon(name, self.t[key]))
+        dots = QIcon()          # a small red dot while recording, a hollow grey one while paused
+        dots.addPixmap(dot_pixmap(self.t["rec"]), QIcon.Mode.Normal, QIcon.State.On)
+        dots.addPixmap(dot_pixmap(self.t["ink3"], hollow=True), QIcon.Mode.Normal, QIcon.State.Off)
+        self.record_button.setIcon(dots)
         self.lines.viewport().update()
 
     def _remove_selected(self):
@@ -969,11 +1040,11 @@ class RecorderPane(QWidget):
             path += ".robot"
         with open(path, "w", encoding="utf-8", newline="\n") as f:
             f.write(self.session.robot(self.name.text()))
-        self.window().statusBar().showMessage(f"Saved {path}", 5000)
+        self.saved.emit(f"Saved {path}")
 
 
-ACT_HINT = "Act: click to tap - drag to swipe - type, then Enter - right-click to assert"
-INSPECT_HINT = "Inspect: click to select (nothing runs on the device) - Ctrl+1 returns to Act"
+ACT_HINT = "Click tap - drag swipe - type + Enter - right-click assert"
+INSPECT_HINT = "Inspect: click selects, nothing runs - Ctrl+1 for Act"
 
 
 def card(widget, theme):
@@ -1014,32 +1085,32 @@ class MainWindow(QMainWindow):
         self.inspector = InspectorPane(self.t)
         self.recorder = RecorderPane(session, self.t)
         self._toolbar(device_name)
+        self.hover = plain_label("", "hover")
+        self.message = self.recorder.message
         device_pane = QWidget()
         column = QVBoxLayout(device_pane); column.setContentsMargins(0, 0, 0, 0); column.setSpacing(8)
         column.addWidget(self.device, 1)
+        controls = self._controls()
+        column.addWidget(controls, 0, Qt.AlignmentFlag.AlignHCenter)
         self.hint = plain_label(ACT_HINT, "hint")
-        self.hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.hint.setWordWrap(True)
-        chip = QHBoxLayout()                # a chip as wide as its text, centred under the phone
-        chip.addStretch(); chip.addWidget(self.hint); chip.addStretch()
-        column.addLayout(chip)
-        device_pane.setMinimumWidth(440)
+        for label in (self.hint, self.hover):          # one line each, centred under the phone
+            label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+            column.addWidget(label)
+        width = controls.sizeHint().width()           # the column is as wide as its control bar, no wider
+        device_pane.setMinimumWidth(width)
         split = QSplitter()
         split.setHandleWidth(16)
         self._cards = [card(self.inspector, self.t), card(self.recorder, self.t)]
-        for widget, stretch in ((device_pane, 4), (self._cards[0], 3), (self._cards[1], 3)):
+        for widget, stretch in ((device_pane, 0), (self._cards[0], 3), (self._cards[1], 3)):
             split.addWidget(widget)
             split.setStretchFactor(split.count() - 1, stretch)
-        split.setSizes([580, 420, 480])                  # the device screen leads
+        split.setSizes([width, 470, 470])                  # the device column hugs the phone; the cards share the rest
         split.setChildrenCollapsible(False)
         ground = QWidget(); ground.setObjectName("ground")
         outer = QVBoxLayout(ground); outer.setContentsMargins(16, 16, 16, 16)
         outer.addWidget(split)
         self.setCentralWidget(ground)
-        self.hover = plain_label("", "hover")
-        self.message = plain_label("", "message")
-        self.statusBar().addWidget(self.message, 1)
-        self.statusBar().addPermanentWidget(self.hover)
         # wiring
         self.device.act.connect(self.submit)
         self.inspector.act.connect(self.submit)
@@ -1047,6 +1118,7 @@ class MainWindow(QMainWindow):
         self.inspector.picked.connect(self._pick)
         self.device.hovered.connect(self.hover.setText)
         self.recorder.edit.connect(worker.edit)
+        self.recorder.saved.connect(self.message.setText)
         worker.edited.connect(lambda: self.recorder.show_lines(self.session.lines))
         worker.recorded.connect(self._recorded)
         worker.failed.connect(self.error)
@@ -1103,20 +1175,6 @@ class MainWindow(QMainWindow):
         spacer = self._gap(16); spacer.setMaximumWidth(16777215)
         spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         bar.addWidget(spacer)
-        for kind, name, text, tip in (("launch", "launch", "Launch", "Open Application (restarts the app)"),
-                                      ("back", "back", "Back", "Go Back (Android)"),
-                                      ("hide_keyboard", "keyboard", "Keyboard", "Hide Keyboard"),
-                                      ("screenshot", "camera", "Screenshot", "Capture Page Screenshot")):
-            action = self._iconed(QAction(text, self), name)
-            action.setToolTip(tip)
-            action.triggered.connect(lambda _=False, k=kind: (self.device.flush_typing(), self.submit(k, {})))
-            action.setEnabled(not (kind == "back" and self.platform == "ios"))
-            bar.addAction(action)
-        self.secret = self._iconed(QAction("Secret", self, checkable=True), "lock")
-        self.secret.setToolTip("Typed text is recorded as ${PASSWORD} and never shown")
-        self.secret.toggled.connect(lambda on: (setattr(self.device, "secret", on), self.device.update()))
-        bar.addAction(self.secret)
-        bar.addSeparator()
         themes = QMenu("Theme", self)
         group = QActionGroup(self); group.setExclusive(True)
         self.theme_actions = {}
@@ -1133,6 +1191,31 @@ class MainWindow(QMainWindow):
         self.theme_button = bar.widgetForAction(theme)           # a toolbar button like the others
         self.theme_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         self.theme_button.setAutoRaise(True)
+
+    def _controls(self):
+        """Launch, Back, Keyboard, Screenshot and Secret: compact buttons directly under the phone."""
+        box = QFrame(); box.setObjectName("controls")
+        row = QHBoxLayout(box); row.setContentsMargins(0, 0, 0, 0); row.setSpacing(8)
+        actions = []
+        for kind, name, text, tip in (("launch", "launch", "Launch", "Open Application (restarts the app)"),
+                                      ("back", "back", "Back", "Go Back (Android)"),
+                                      ("hide_keyboard", "keyboard", "Keyboard", "Hide Keyboard"),
+                                      ("screenshot", "camera", "Screenshot", "Capture Page Screenshot")):
+            action = self._iconed(QAction(text, self), name)
+            action.setToolTip(tip)
+            action.triggered.connect(lambda _=False, k=kind: (self.device.flush_typing(), self.submit(k, {})))
+            action.setEnabled(not (kind == "back" and self.platform == "ios"))
+            actions.append(action)
+        self.secret = self._iconed(QAction("Secret", self, checkable=True), "lock")
+        self.secret.setToolTip("Typed text is recorded as ${PASSWORD} and never shown")
+        self.secret.toggled.connect(lambda on: (setattr(self.device, "secret", on), self.device.update()))
+        actions.append(self.secret)
+        for action in actions:
+            button = QToolButton(); button.setDefaultAction(action)
+            button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon); button.setIconSize(ICON_SIZE)
+            button.setAutoRaise(True)
+            row.addWidget(button)
+        return box
 
     @staticmethod
     def _gap(width=8):
@@ -1161,7 +1244,9 @@ class MainWindow(QMainWindow):
         if line is not None:
             self.device.flash()
         self.message.setStyleSheet("")
-        self.message.setText("Recorded" if line is not None else "Ran (recording is paused)")
+        text = "Recorded" if line is not None else "Ran (recording is paused)"
+        self.message.setText(text)
+        QTimer.singleShot(4000, lambda: self.message.setText("") if self.message.text() == text else None)
 
     def _tree(self, tree):
         self.device.set_tree(tree)
@@ -1193,6 +1278,7 @@ class MainWindow(QMainWindow):
             shade(frame, self.t)
         self.theme_actions[mode].setChecked(True)
         self.recorder.retheme()
+        self.inspector.retheme()
         self.recorder.show_lines(self.session.lines)
         self._dot("ok" if self.live else "ink3")
         self.device.update()
