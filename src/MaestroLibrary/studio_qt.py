@@ -208,11 +208,11 @@ THEMES = {
     "light": {"ground": "#e9ecf1", "panel": "#ffffff", "raised": "#f4f6f9", "hover": "#eceff4", "line": "#d6dae3",
               "ink": "#14171c", "ink2": "#566070", "ink3": "#9097a5", "accent": "#4361ee", "accent_soft": "#e4e9fd",
               "accent_ink": "#ffffff", "rec": "#e5484d", "rec_soft": "#fde4e5", "ok": "#15803d", "ok_soft": "#dcf5e5",
-              "warn": "#b45309", "warn_soft": "#fdebd0", "select": "#4361ee", "screen": "#0b0d10", "shadow_alpha": 70},
-    "dark": {"ground": "#090b0f", "panel": "#161a21", "raised": "#1d222b", "hover": "#252b36", "line": "#2e3542",
-             "ink": "#e7e9ee", "ink2": "#9ba3b1", "ink3": "#626a79", "accent": "#7b93ff", "accent_soft": "#252d4d",
+              "warn": "#b45309", "warn_soft": "#fdebd0", "select": "#4361ee", "screen": "#0b0d10", "shadow_alpha": 70, "shadow_blur": 28, "shadow_y": 6, "edge": "#d6dae3"},
+    "dark": {"ground": "#050608", "panel": "#181c24", "raised": "#20252f", "hover": "#2a303c", "line": "#303746",
+             "ink": "#eef0f4", "ink2": "#b7bfcc", "ink3": "#858e9e", "accent": "#7b93ff", "accent_soft": "#252d4d",
              "accent_ink": "#0d0f13", "rec": "#ff6369", "rec_soft": "#3a1d20", "ok": "#3ecf8e", "ok_soft": "#16342a",
-             "warn": "#f5b14c", "warn_soft": "#3b2d14", "select": "#7b93ff", "screen": "#000000", "shadow_alpha": 150},
+             "warn": "#f5b14c", "warn_soft": "#3b2d14", "select": "#7b93ff", "screen": "#000000", "shadow_alpha": 230, "shadow_blur": 44, "shadow_y": 12, "edge": "#3d4555"},
 }
 THEME_MODES = ("system", "light", "dark")
 
@@ -229,7 +229,7 @@ def theme_name(app, mode="system"):
 QSS = """
 QWidget {{ color: {ink}; font-size: 13px; }}
 QMainWindow, QWidget#ground {{ background: {ground}; }}
-QFrame#card {{ background: {panel}; border: 1px solid {line}; border-radius: 14px; }}
+QFrame#card {{ background: {panel}; border: 1px solid {line}; border-top-color: {edge}; border-radius: 14px; }}
 QToolBar#shell {{ background: {panel}; border: 0; border-bottom: 1px solid {line}; padding: 10px 16px; spacing: 4px; }}
 QToolBar#shell QToolButton {{ background: transparent; border: 1px solid transparent; border-radius: 8px;
     padding: 6px 10px; color: {ink}; }}
@@ -994,7 +994,10 @@ def card(widget, theme):
 
 
 def shade(frame, theme):
-    frame.graphicsEffect().setColor(QColor(0, 0, 0, theme["shadow_alpha"]))
+    effect = frame.graphicsEffect()
+    effect.setColor(QColor(0, 0, 0, theme["shadow_alpha"]))
+    effect.setBlurRadius(theme["shadow_blur"])      # dark needs a wider, deeper shadow to show on a dark ground
+    effect.setOffset(0, theme["shadow_y"])
 
 
 class MainWindow(QMainWindow):
