@@ -48,7 +48,7 @@ class OpenApplicationTest(unittest.TestCase):
         self.assertIn("adb did not run", warn.call_args.args[0])
 
     def test_without_adb_on_path_opens_the_app_without_the_focus_wait(self):
-        with mock.patch.dict(os.environ, {"PATH": ""}), mock.patch("MaestroLibrary.logger.warn") as warn:
+        with mock.patch.dict(os.environ, {"PATH": ""}), mock.patch("MaestroLibrary.mcp.install_dirs", return_value=[]),                 mock.patch("MaestroLibrary.logger.warn") as warn:
             self.lib.run_keyword("open_application", ["com.example.app"])
         self.assertEqual(self.lib.app_id, "com.example.app")
         self.assertIn("adb", warn.call_args.args[0])

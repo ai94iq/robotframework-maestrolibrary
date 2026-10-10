@@ -12,8 +12,22 @@ VIEWER_NOTICE = "Maestro Viewer is available"
 PROBE_TIMEOUT_S = 10
 
 
+def install_dirs():
+    """Where the official installers put maestro and adb, searched after PATH: an app opened from Finder or a
+    desktop launcher gets a minimal PATH. Absolute directories only."""
+    home, local = os.path.expanduser("~"), os.environ.get("LOCALAPPDATA", "")
+    dirs = [os.path.join(home, ".maestro", "bin"), os.path.join(home, ".maestro", "maestro", "bin"),
+            "/opt/homebrew/bin", "/usr/local/bin",
+            os.path.join(home, "Library", "Android", "sdk", "platform-tools"),
+            os.path.join(home, "Android", "Sdk", "platform-tools")]
+    if local:
+        dirs.append(os.path.join(local, "Android", "Sdk", "platform-tools"))
+    return [d for d in dirs if os.path.isabs(d)]
+
+
 def find_exe(name):
-    """Returns the absolute path of the executable `name` from PATH's absolute directories, or None.
+    """Returns the absolute path of the executable `name` from PATH's absolute directories, then the usual
+    install directories (install_dirs), or None.
 
     Never the working directory: Windows (and shutil.which there) checks it before PATH, so an
     adb.exe in a checked-out test repository would run instead of the real one. A `name` that
@@ -22,7 +36,7 @@ def find_exe(name):
     if os.path.dirname(name):
         return name if os.path.isfile(name) else None
     exts = os.environ.get("PATHEXT", ".EXE;.BAT;.CMD").split(os.pathsep) if os.name == "nt" else [""]
-    for folder in os.environ.get("PATH", "").split(os.pathsep):
+    for folder in os.environ.get("PATH", "").split(os.pathsep) + install_dirs():
         if not os.path.isabs(folder):
             continue
         for ext in exts:

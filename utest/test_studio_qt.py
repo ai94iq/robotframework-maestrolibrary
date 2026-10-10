@@ -559,6 +559,18 @@ class MainTest(unittest.TestCase):
         made[0].mcp.close.assert_called_once()
         windows[0].close()
 
+    def test_self_check_decodes_the_sample_without_a_device(self):
+        import contextlib
+        import io
+        from MaestroLibrary import studio
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.assertEqual(studio.main(["--self-check"]), 0)
+        text = out.getvalue()
+        self.assertIn("ffmpeg license: LGPL", text)
+        self.assertRegex(text, r"decoded \d+ frames of 320x640")
+        self.assertIn("maestro: ", text)
+
     def test_missing_extra_says_how_to_install(self):
         from unittest import mock
         from MaestroLibrary import studio

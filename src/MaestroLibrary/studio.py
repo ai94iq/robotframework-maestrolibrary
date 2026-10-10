@@ -222,6 +222,7 @@ def main(argv=None):
     parser.add_argument("--max-size", type=int, default=1080, help="live view size, longest side in px (default 1080)")
     parser.add_argument("--video-encoder", help="device video encoder for the live view, if the default misbehaves "
                                                 "(list them with: scrcpy --list-encoders)")
+    parser.add_argument("--self-check", action="store_true", help=argparse.SUPPRESS)   # for packaged builds
     args = parser.parse_args(argv)
     try:
         from PySide6.QtCore import QThread
@@ -231,6 +232,8 @@ def main(argv=None):
     except ImportError as err:
         print(f'Studio needs its extra: pip install "robotframework-maestrolibrary[studio]" ({err})', file=sys.stderr)
         return 2
+    if args.self_check:
+        return self_check(studio_qt)
     from . import MaestroLibrary
     from .driver import DriverReader
     from .stream import ScrcpyStream
@@ -286,6 +289,31 @@ def main(argv=None):
         if reader:
             reader.close()
         lib.mcp.close()
+
+
+GPL_LIBS = ("enable-gpl", "libx264", "libx265", "enable-nonfree")
+
+
+def self_check(studio_qt):
+    """Checks a build without a device: Qt, PyAV and grpcio load, FFmpeg decodes H.264, and which tools are found.
+    Returns 0 when the decoder works."""
+    import importlib.resources
+
+    import grpc
+    from av._core import library_meta      # the only place PyAV exposes FFmpeg's license and configure line
+
+    from .mcp import find_exe
+    codec = library_meta["libavcodec"]
+    print(f"ffmpeg license: {codec['license']}")
+    print(f"ffmpeg gpl or nonfree parts: {[p for p in GPL_LIBS if p in codec['configuration']] or 'none'}")
+    print(f"grpcio {grpc.__version__}")
+    sample = importlib.resources.files(__package__).joinpath("studio_sample.h264").read_bytes()
+    decoder = studio_qt.FrameDecoder()
+    frames = decoder.feed(sample) + decoder.flush()
+    print(f"decoded {len(frames)} frames" + (f" of {frames[0].width()}x{frames[0].height()}" if frames else ""))
+    for tool in ("maestro", "adb", "scrcpy"):
+        print(f"{tool}: {find_exe(tool) or 'missing'}")
+    return 0 if frames else 1
 
 
 def connected_devices(lib):

@@ -39,6 +39,17 @@ class FindExeTest(unittest.TestCase):
             del os.environ["NoDefaultCurrentDirectoryInExePath"]
             self.assertEqual(os.path.normcase(find_exe("tool")), os.path.normcase(self.real))
 
+    def test_install_directories_are_searched_after_path(self):
+        # an app opened from Finder gets PATH=/usr/bin:/bin:...; maestro lives in ~/.maestro/bin
+        home = os.path.dirname(self.bin)
+        maestro_bin = os.path.join(home, ".maestro", "bin")
+        found = self.tool(maestro_bin)
+        with mock.patch.dict(os.environ, {"PATH": "", "HOME": home, "USERPROFILE": home}):
+            self.assertEqual(os.path.normcase(find_exe("tool")), os.path.normcase(found))
+        os.remove(found)
+        with mock.patch.dict(os.environ, {"PATH": "", "HOME": home, "USERPROFILE": home}):
+            self.assertIsNone(find_exe("tool"))           # the planted one in the working directory never counts
+
     def test_missing_tool_and_explicit_path(self):
         with mock.patch.dict(os.environ, {"PATH": self.cwd + "-nothing"}):
             self.assertIsNone(find_exe("tool"))
