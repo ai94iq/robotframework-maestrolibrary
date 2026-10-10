@@ -48,11 +48,15 @@ def main(argv=None):
     args = parser.parse_args(argv)
     prefix = os.path.abspath(args.prefix)
     options = CONFIGURE + (["--toolchain=msvc"] if sys.platform == "win32" else [])
+    # Full paths from PATH: Windows looks in System32 before PATH, where bash.exe is the WSL launcher.
+    bash, make = shutil.which("bash"), shutil.which("make")
+    if not bash or not make:
+        raise SystemExit("bash and make must be on PATH (on Windows, run this from an MSYS2 shell).")
     with tempfile.TemporaryDirectory() as work:
         source = fetch(work)
-        subprocess.run(["bash", "./configure", f"--prefix={prefix.replace(os.sep, '/')}", *options], cwd=source, check=True)
-        subprocess.run(["make", f"-j{args.jobs}"], cwd=source, check=True)
-        subprocess.run(["make", "install"], cwd=source, check=True)
+        subprocess.run([bash, "./configure", f"--prefix={prefix.replace(os.sep, '/')}", *options], cwd=source, check=True)
+        subprocess.run([make, f"-j{args.jobs}"], cwd=source, check=True)
+        subprocess.run([make, "install"], cwd=source, check=True)
         notices = os.path.join(prefix, "share", "licenses", "ffmpeg")
         os.makedirs(notices, exist_ok=True)
         shutil.copy(os.path.join(source, "COPYING.LGPLv2.1"), notices)

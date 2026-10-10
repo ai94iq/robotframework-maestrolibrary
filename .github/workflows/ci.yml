@@ -99,9 +99,9 @@ jobs:
       - if: runner.os == 'Windows' && steps.cache.outputs.cache-hit != 'true'
         uses: msys2/setup-msys2@v2.33.0
         with:
-          msystem: MINGW64
+          msystem: UCRT64
           path-type: inherit   # keeps MSVC's cl.exe and the runner's Python on PATH
-          install: make diffutils pkgconf mingw-w64-x86_64-nasm
+          install: make diffutils pkgconf mingw-w64-ucrt-x86_64-nasm
       - if: runner.os == 'Windows' && steps.cache.outputs.cache-hit != 'true'
         shell: msys2 {0}
         run: |
