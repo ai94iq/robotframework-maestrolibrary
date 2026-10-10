@@ -1,5 +1,6 @@
 """The Studio window (PySide6): live device screen, inspector and recorder. Needs the `studio` extra."""
 import html
+from collections import Counter
 import subprocess
 import threading
 import time
@@ -13,7 +14,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QApplication, QFileDialog, QHB
                                QSplitter, QTableWidget, QTableWidgetItem, QToolBar, QTreeWidget, QTreeWidgetItem,
                                QVBoxLayout, QWidget, QWidgetAction)
 
-from .locators import LOCATABLE, element_at, locator_candidates, parse_bounds
+from .locators import element_at, locator_candidates, parse_bounds, walk
 
 MAX_SIDE = 8192            # larger frames are dropped: our scrcpy-server never sends them
 
@@ -61,15 +62,24 @@ def is_system(element):
     return any(s in (element.get("rid") or "") for s in SYSTEM_IDS)
 
 
-def visible_tree(screen):
-    """[(element, children)] for the Source panel: system UI left out, and containers with nothing
-    a locator can use folded away, so every row is something you can click and locate."""
+def visible_tree(screen, shared=None):
+    """[(element, children)] for the Source panel: system UI left out, and containers folded away when
+    nothing locates them (no text, and no id or only a generic one: android:id/..., or shared by many
+    elements like Compose's obfuscated ids), so every row is something you can click and locate."""
+    if shared is None:
+        counts = Counter(e.get("rid") for e in walk(screen) if e.get("rid"))
+        shared = {rid for rid, n in counts.items() if n > 1}
+
+    def labelled(e):
+        rid = e.get("rid") or ""
+        return any(e.get(k) for k in ("txt", "a11y", "hint")) or (
+            bool(rid) and rid not in shared and not rid.startswith("android:id/"))
     rows = []
     for element in screen:
         if is_system(element):
             continue
-        children = visible_tree(element.get("c", []))
-        if any(element.get(k) for k in LOCATABLE):
+        children = visible_tree(element.get("c", []), shared)
+        if labelled(element):
             rows.append((element, children))
         else:
             rows.extend(children)
@@ -228,6 +238,7 @@ def apply_theme(app):
         f"QLabel#pane {{ font-weight: 600; padding: 8px 10px 4px; }}"
         f"QLabel#hint {{ color: {t['ink2']}; padding: 4px 12px; }}"
         f"QLabel#title {{ font-size: 14px; font-weight: 600; }}"
+        f"QLabel#title[empty=\"true\"] {{ font-size: 13px; font-weight: 400; color: {t['ink2']}; }}"
         f"QSplitter::handle {{ background: {t['line']}; }}"
         f"QPushButton {{ padding: 4px 10px; }}"
         f"QLineEdit {{ border: 1px solid {t['line']}; border-radius: 6px; padding: 4px 6px; background: {t['ground']}; }}"
@@ -584,8 +595,10 @@ class InspectorPane(QWidget):
             widget.setVisible(element is not None)
         if not element:
             self.title.setText(PICK_HINT)
+            self.title.setProperty("empty", True); self.title.style().polish(self.title)
             return
         self.title.setText(first_line(element) or "(no text)")
+        self.title.setProperty("empty", False); self.title.style().polish(self.title)
         for locator, count in locator_candidates(element, self.tree["elements"] if self.tree else [element]):
             self._row(self.locators, locator, "unique" if count == 1 else f"{count} matches")
         for key, value in element.items():

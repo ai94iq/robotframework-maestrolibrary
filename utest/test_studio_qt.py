@@ -396,12 +396,13 @@ class SourceTreeTest(unittest.TestCase):
         from MaestroLibrary.studio_qt import visible_tree
         screen = NESTED + [
             {"b": "[0,0][1080,80]", "rid": "com.android.systemui:id/status_bar", "c": [{"txt": "10:58"}]},
-            {"rid": "com.google.android.inputmethod.latin:id/key", "txt": "q"}]
+            {"rid": "com.google.android.inputmethod.latin:id/key", "txt": "q"},
+            {"rid": "android:id/content", "c": [{"rid": "app:id/0_obf", "c": [{"rid": "app:id/0_obf", "a11y": "Play"}]}]}]
 
         def shape(rows):
-            return [(e.get("txt") or e.get("rid"), shape(c)) for e, c in rows]
+            return [(e.get("txt") or e.get("a11y") or e.get("rid"), shape(c)) for e, c in rows]
         # the root and the row container have nothing locatable: their children move up a level
-        self.assertEqual(shape(visible_tree(screen)), [("Search", []), ("Apps", [])])
+        self.assertEqual(shape(visible_tree(screen)), [("Search", []), ("Apps", []), ("Play", [])])
 
 
 if __name__ == "__main__":
