@@ -44,6 +44,14 @@ class FakeLib:
     def __init__(self, elements):
         self._elements, self.ran, self.app_id, self.fail = elements, [], "com.app", None
         self.device, self.platform, self.device_switches = "SER", "android", []
+        self.adb_path, self.shell = None, []
+
+    def adb(self):
+        return self.adb_path
+
+    def adb_shell(self, *args, purpose):
+        self.shell.append(args)
+        return ""
 
     def device_id(self):
         if self.platform is None:              # set to None by a device switch: resolve it again
@@ -88,6 +96,31 @@ class SessionTest(unittest.TestCase):
             self.assertEqual(planned, self.s.act(kind, **kw))
         self.assertEqual(self.s.preview("type", self.s.tree(), text="pw", secret=True),
                          "Input Text Into Current Element    ${PASSWORD}")
+
+    def test_android_touch_steps_go_through_adb_with_the_same_lines(self):
+        maestro = [self.s.act(k, **kw) for k, kw in (("click", {"x": 500, "y": 200}), ("back", {}),
+                                                      ("swipe", {"x": 540, "y": 1800, "x2": 540, "y2": 600}),
+                                                      ("long_press", {"x": 500, "y": 200}))]
+        self.lib.adb_path, self.lib.ran = "adb", []
+        tree = self.s.tree()
+        fast = [self.s.act(k, tree=tree, **kw) for k, kw in (("click", {"x": 500.4, "y": 200}), ("back", {}),
+                                                               ("swipe", {"x": 540, "y": 1800, "x2": 540, "y2": 600}),
+                                                               ("long_press", {"x": 500, "y": 200}))]
+        self.assertEqual(fast, maestro)
+        self.assertEqual(self.lib.ran, [])                      # no Maestro call
+        self.assertEqual(self.lib.shell, [("input", "tap", "500", "200"), ("input", "keyevent", "4"),
+                                          ("input", "swipe", "540", "1800", "540", "600", "300"),
+                                          ("input", "swipe", "500", "200", "500", "200", "800")])
+
+    def test_typing_after_an_adb_click_merges_into_input_text(self):
+        self.lib.adb_path = "adb"
+        self.s.act("click", 500, 200, tree=self.s.tree())
+        self.s.act("type", text="wifi")
+        self.assertEqual(self.s.lines, [r"Input Text    id\=com.app:id/search    wifi"])
+
+    def test_without_adb_touch_steps_use_maestro(self):
+        self.s.act("click", 500, 200, tree=self.s.tree())
+        self.assertEqual(self.lib.ran, [("click_element", ["id=com.app:id/search"])])
 
     def test_blank_space_records_point(self):
         self.assertTrue(self.s.act("click", 500, 2300).startswith(r"Click Element    point\=46%,96%"))

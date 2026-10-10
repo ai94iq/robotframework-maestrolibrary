@@ -21,6 +21,9 @@ ELEMENT_KINDS = {"click": "click_element", "long_press": "long_press",
                  "should_be_visible": "element_should_be_visible", "text_should_be": "element_text_should_be"}
 SIMPLE_KINDS = {"back": "go_back", "hide_keyboard": "hide_keyboard", "screenshot": "capture_page_screenshot"}
 KINDS = set(ELEMENT_KINDS) | set(SIMPLE_KINDS) | {"type", "swipe", "launch"}
+# Touch steps Studio sends to an Android device with adb: the device reacts in about 0.2 s, against 2 to 7 s for
+# Maestro, which waits for the screen to settle (measured on a phone). The recorded line is the same either way.
+TOUCH_KINDS = {"click", "long_press", "swipe", "back"}
 KEYWORD_NAMES = {"click_element": "Click Element", "long_press": "Long Press",
                  "wait_until_page_contains_element": "Wait Until Page Contains Element",
                  "element_should_be_visible": "Element Should Be Visible",
@@ -64,18 +67,23 @@ class Session:
 
     def tree(self, fresh=False):
         """The current screen (nested and flat) and its size; read again after a step, or when `fresh`."""
-        with self.lock:
-            if fresh or self._tree is None:
-                screen = self.lib.screen()
-                elements = list(walk(screen))
-                root = max((parse_bounds(e.get("b")) or (0, 0, 0, 0) for e in elements),
-                           key=lambda b: b[2] * b[3], default=(0, 0, 0, 0))
-                self._tree = {"screen": screen, "elements": elements, "width": root[2] or 1, "height": root[3] or 1,
-                              "platform": getattr(self.lib, "platform", None)}
-            return self._tree
+        tree = self._tree
+        if fresh or tree is None:
+            screen = self.lib.screen()                      # seconds on a phone: outside the lock
+            elements = list(walk(screen))
+            root = max((parse_bounds(e.get("b")) or (0, 0, 0, 0) for e in elements),
+                       key=lambda b: b[2] * b[3], default=(0, 0, 0, 0))
+            tree = {"screen": screen, "elements": elements, "width": root[2] or 1, "height": root[3] or 1,
+                    "platform": getattr(self.lib, "platform", None)}
+            with self.lock:
+                self._tree = tree
+        return tree
 
     def _run(self, keyword, args, comment=""):
         self.lib.run_keyword(keyword, list(args))          # raises: nothing is recorded
+        return self._record(keyword, args, comment)
+
+    def _record(self, keyword, args, comment=""):
         self._tree = None                                   # the screen changed
         if not self.recording:
             return None
@@ -98,10 +106,44 @@ class Session:
             return SEP.join(["Open Application", arg(self.app_id or getattr(self.lib, "app_id", "") or "")])
         return KEYWORD_NAMES[SIMPLE_KINDS[kind]]
 
-    def act(self, kind, x=None, y=None, x2=None, y2=None, text=None, secret=False):
-        """Runs one action; returns its recorded line (None while recording is off)."""
+    def touch(self, kind):
+        """Whether `kind` runs through adb here: an Android touch step with adb available."""
+        return kind in TOUCH_KINDS and getattr(self.lib, "platform", None) == "android" and bool(self.lib.adb())
+
+    def _adb_input(self, *args):
+        # every argument is an int or a fixed word: adb joins them into one device shell line
+        if self.lib.adb_shell("input", *(str(int(a)) if not isinstance(a, str) else a for a in args),
+                              purpose="sending a touch step") is None:
+            raise AssertionError("adb did not run the step on the device.")
+
+    def _touch(self, kind, tree, x, y, x2, y2):
+        """Runs a touch step with adb and records the line Maestro would replay, located on `tree` (the screen
+        the user acted on)."""
+        if kind == "back":
+            self._adb_input("keyevent", "4")
+            self._last_locator = None
+            return self._record("go_back", [])
+        if kind == "swipe":
+            self._adb_input("swipe", x, y, x2, y2, 300)
+            self._last_locator = None
+            return self._record("swipe_by_percent", [*pct(tree, x, y), *pct(tree, x2, y2)])
+        locator, comment = locate(tree, x, y)
+        if kind == "click":
+            self._adb_input("tap", x, y)
+        else:
+            self._adb_input("swipe", x, y, x, y, 800)          # a long press is a swipe that stays put
+        self._last_locator = locator if kind == "click" else None
+        return self._record(ELEMENT_KINDS[kind], [locator], comment)
+
+    def act(self, kind, x=None, y=None, x2=None, y2=None, text=None, secret=False, tree=None):
+        """Runs one action; returns its recorded line (None while recording is off).
+
+        With `tree` (the screen the user acted on), an Android touch step goes through adb and is located on it."""
         if kind not in KINDS:
             raise ValueError(f"Unknown action {kind!r}.")
+        if tree is not None and self.touch(kind):
+            with self.lock:
+                return self._touch(kind, tree, x, y, x2, y2)
         with self.lock:
             if kind == "type":
                 return self._type(no_maestro_js(str(text)), secret)
@@ -187,7 +229,7 @@ def main(argv=None):
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("MaestroLibrary.Studio")
     app.setWindowIcon(studio_qt.app_icon())
     lib = MaestroLibrary(device=args.device, run_on_failure="Nothing", logcat=False)
-    window = thread = None
+    window = thread = touch_thread = None
     try:
         device = lib.device_id()
         session = Session(lib, args.app)
@@ -195,6 +237,10 @@ def main(argv=None):
         thread = QThread()
         worker.moveToThread(thread)
         thread.start()
+        touch = studio_qt.ActionWorker(session, follow=worker)
+        touch_thread = QThread()
+        touch.moveToThread(touch_thread)
+        touch_thread.start()
 
         def screenshot():
             content = lib.mcp.call_tool("take_screenshot", {"device_id": lib.device_id()})
@@ -208,7 +254,7 @@ def main(argv=None):
                                                        video_encoder=args.video_encoder))
 
         window = studio_qt.MainWindow(session, worker, device_name=device, platform=lib.platform,
-                                      devices=connected_devices(lib), live_view=live_view)
+                                      devices=connected_devices(lib), live_view=live_view, touch=touch)
         worker.screenshot = screenshot
         window.resize(1480, 940)
         window.show()
@@ -220,9 +266,10 @@ def main(argv=None):
     finally:
         if window:
             window.stop_live()
-        if thread:
-            thread.quit()
-            thread.wait(10000)
+        for running in (thread, touch_thread):
+            if running:
+                running.quit()
+                running.wait(10000)
         lib.mcp.close()
 
 

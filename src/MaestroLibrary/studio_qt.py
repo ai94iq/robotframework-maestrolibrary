@@ -114,9 +114,10 @@ class ActionWorker(QObject):
     switched = Signal(str, str)        # (device, platform) now in use
     done = Signal()                    # a step finished, whatever its outcome
 
-    def __init__(self, session):
+    def __init__(self, session, follow=None):
         super().__init__()
         self.session = session
+        self.follow = follow             # the main worker: a touch-step worker leaves the screen read to it
         self.screenshot, self.live = None, False
         self.request.connect(self.run)
         self.poll.connect(self._polled)
@@ -174,6 +175,10 @@ class ActionWorker(QObject):
             self.ended.emit()          # the pending line goes first, so the recorded one is the last drawn
             self.recorded.emit(line)
         finally:
+            if self.follow:
+                self.follow.request_poll()
+                self.done.emit()
+                return
             self.refresh()
             if not self.live:
                 self.grab()
@@ -1354,9 +1359,10 @@ class Pill(QFrame):
 
 class MainWindow(QMainWindow):
     def __init__(self, session, worker, device_name="", platform="android", settings=None, devices=(),
-                 live_view=None):
+                 live_view=None, touch=None):
         super().__init__()
         self.session, self.worker, self.platform = session, worker, platform
+        self.touch = touch                    # a worker for adb touch steps (see Session.touch), or None
         self.device_name, self.reader, self.live_device, self.switching = device_name, None, None, False
         self.live_view = live_view            # (device, platform) -> a started StreamReader, or None
         self.devices = [d if isinstance(d, dict) else {"device_id": d} for d in devices]
@@ -1404,9 +1410,10 @@ class MainWindow(QMainWindow):
         self.device.selected.connect(self.inspector.show_element)
         self.inspector.picked.connect(self._pick)
         self.device.hovered.connect(self.hover.setText)
-        self.recorder.edit.connect(worker.edit)
+        editor = touch or worker          # line edits must not wait seconds behind a screen read on the main worker
+        self.recorder.edit.connect(editor.edit)
         self.recorder.saved.connect(self.recorder.say)
-        worker.edited.connect(lambda: self._show_pending())
+        editor.edited.connect(lambda: self._show_pending())
         worker.recorded.connect(self._recorded)
         worker.failed.connect(self.error)
         worker.tree.connect(self._tree)
@@ -1414,6 +1421,11 @@ class MainWindow(QMainWindow):
         worker.ended.connect(self._ended)
         worker.image.connect(self.device.set_frame)
         worker.switched.connect(self._switched)
+        if touch:
+            touch.recorded.connect(self._recorded)
+            touch.failed.connect(self.error)
+            touch.done.connect(self._done)
+            touch.ended.connect(self._ended)
         self.poll = QTimer(self)
         self.poll.timeout.connect(lambda: worker.request_poll() if not self.pending else None)
         self.poll.start(5000)                 # each read waits for the screen to settle (up to 3 s)
@@ -1422,7 +1434,7 @@ class MainWindow(QMainWindow):
             button.setFocusPolicy(Qt.FocusPolicy.TabFocus)
         self.device.setFocus()                # typing goes to the phone; no toolbar button starts focused
         for keys, slot in (("Ctrl+1", self.act_mode.trigger), ("Ctrl+2", self.inspect_mode.trigger),
-                           ("Ctrl+Z", lambda: worker.edit.emit("undo")), ("Ctrl+S", self.recorder.save)):
+                           ("Ctrl+Z", lambda: editor.edit.emit("undo")), ("Ctrl+S", self.recorder.save)):
             QShortcut(QKeySequence(keys), self, activated=slot)
 
     def _toolbar(self, device_name):
@@ -1542,7 +1554,10 @@ class MainWindow(QMainWindow):
         self.recorder.say(f"Running {self.pending} step{'s' if self.pending > 1 else ''}")
         self.queued.append(self._preview(kind, kwargs))
         self._show_pending()
-        self.worker.request.emit(kind, kwargs)
+        if self.touch and self.live and self.pending == 1 and self.device.tree and self.session.touch(kind):
+            self.touch.request.emit(kind, dict(kwargs, tree=self.device.tree))   # at once, located on what was shown
+        else:
+            self.worker.request.emit(kind, kwargs)
 
     def _preview(self, kind, kwargs):
         """The line this step will most likely record, shown at once: Maestro takes seconds to finish a step."""

@@ -29,7 +29,7 @@ python -m bandit -q -c pyproject.toml -r src
 
 ## Next
 
-- UI: Lucide 1.55.0 icons, segmented mode control, cards with shadows, a floating device control bar, one title style for both panes, a click-to-cycle theme button (system, light, dark), menus and tooltips drawn as one rounded surface, 150 ms tooltips, and a device dropdown in the pill when several devices are connected (real devices and emulators get their own icons; switching moves the same window and Maestro process to that device), steps shown as pending lines while Maestro runs them. Waiting for the user's look.
+- UI: Lucide 1.55.0 icons, segmented mode control, cards with shadows, a floating device control bar, one title style for both panes, a click-to-cycle theme button (system, light, dark), menus and tooltips drawn as one rounded surface, 150 ms tooltips, and a device dropdown in the pill when several devices are connected (real devices and emulators get their own icons; switching moves the same window and Maestro process to that device), steps shown as pending lines while Maestro runs them; Android touch steps go through adb and record in about 0.15 s. End to end on the phone (2026-10-10): 18 of 18 checks pass in the real window, the saved test replays, the screenshot fallback works. Waiting for the user's look.
 - Then one device batch: end to end, replay, fallback.
 
 - Device runs at the end: end to end (make the harness read element positions from the window's own tree, not Maestro on the UI thread), replay of the saved test, fallback without scrcpy.
