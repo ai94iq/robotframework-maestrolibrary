@@ -1047,6 +1047,9 @@ ACT_HINT = "Click tap - drag swipe - type + Enter - right-click assert"
 INSPECT_HINT = "Inspect: click selects, nothing runs - Ctrl+1 for Act"
 
 
+SHADOW_ROOM = 14   # px around a card for its shadow; the bottom gets twice that (the shadow falls down)
+
+
 def card(widget, theme):
     """A pane on the window's ground: a rounded panel with a hairline border and a soft drop shadow.
 
@@ -1061,7 +1064,14 @@ def card(widget, theme):
     effect.setOffset(0, 6)
     frame.setGraphicsEffect(effect)
     shade(frame, theme)
-    return frame
+    # A shadow is drawn outside the frame, and whatever holds the frame clips it: hold the frame in a
+    # transparent widget with room for the deepest shadow (dark: blur 44, 12 px down).
+    holder = QWidget()
+    holder.frame = frame
+    room = QVBoxLayout(holder)
+    room.setContentsMargins(SHADOW_ROOM, SHADOW_ROOM // 2, SHADOW_ROOM, SHADOW_ROOM * 2)
+    room.addWidget(frame)
+    return holder
 
 
 def shade(frame, theme):
@@ -1100,7 +1110,7 @@ class MainWindow(QMainWindow):
         width = controls.sizeHint().width()           # the column is as wide as its control bar, no wider
         device_pane.setMinimumWidth(width)
         split = QSplitter()
-        split.setHandleWidth(16)
+        split.setHandleWidth(4)                  # the cards' shadow room already spaces them
         self._cards = [card(self.inspector, self.t), card(self.recorder, self.t)]
         for widget, stretch in ((device_pane, 0), (self._cards[0], 3), (self._cards[1], 3)):
             split.addWidget(widget)
@@ -1108,7 +1118,7 @@ class MainWindow(QMainWindow):
         split.setSizes([width, 470, 470])                  # the device column hugs the phone; the cards share the rest
         split.setChildrenCollapsible(False)
         ground = QWidget(); ground.setObjectName("ground")
-        outer = QVBoxLayout(ground); outer.setContentsMargins(16, 16, 16, 16)
+        outer = QVBoxLayout(ground); outer.setContentsMargins(16, 8, 4, 0)
         outer.addWidget(split)
         self.setCentralWidget(ground)
         # wiring
@@ -1274,8 +1284,8 @@ class MainWindow(QMainWindow):
         self.t.update(apply_theme(QApplication.instance(), mode))      # the panes share this dict
         for target, name, key, on in self._icons:
             target.setIcon(icon(name, self.t[key], self.t[on]))
-        for frame in self._cards:
-            shade(frame, self.t)
+        for holder in self._cards:
+            shade(holder.frame, self.t)
         self.theme_actions[mode].setChecked(True)
         self.recorder.retheme()
         self.inspector.retheme()
