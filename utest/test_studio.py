@@ -44,7 +44,7 @@ class FakeLib:
     def __init__(self, elements):
         self._elements, self.ran, self.app_id, self.fail = elements, [], "com.app", None
 
-    def elements(self):
+    def screen(self):
         return self._elements
 
     def run_keyword(self, name, args, kwargs=None):
@@ -148,7 +148,7 @@ class SessionTest(unittest.TestCase):
 
     def test_stale_tree_refreshes(self):
         calls = []
-        self.lib.elements = lambda: calls.append(1) or SCREEN
+        self.lib.screen = lambda: calls.append(1) or SCREEN
         with mock.patch("MaestroLibrary.studio.time.monotonic", side_effect=[0, 0.5, 5, 5]):
             self.s.tree(); self.s.tree(); self.s.tree()    # fetched at 0; 0.5 s old: kept; 5 s old: fetched
         self.assertEqual(len(calls), 2)

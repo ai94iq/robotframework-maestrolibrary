@@ -10,7 +10,7 @@ Current work: **MaestroLibrary Studio**. A native Qt (PySide6) window shows the 
 - [x] Task 3b: Python floor 3.12; plan.md and handover.md
 - [ ] Task 3b step 5: fms-flutter-automation CI image python:3.14-alpine (push after 0.6.0 is on PyPI)
 - [x] Task 4: web layer removed (`b0cf27b`); decoding spike (PyAV chosen); `FrameDecoder`, `StreamReader`, `studio` extra
-- [ ] Task 5: `ActionWorker` (ordered steps off the UI thread), `source_tree`
+- [x] Task 5: `ActionWorker` (ordered steps off the UI thread), `source_tree`; `Session.tree` keeps the nested screen
 - [ ] Task 6: the Qt window (impeccable Operate mode); device end to end; replay; fallback
 - [ ] Task 7: docs, skill, CI OS matrix, security pass, push
 - [ ] Release 0.6.0 (only when the user says so)

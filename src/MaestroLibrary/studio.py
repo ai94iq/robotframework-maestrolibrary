@@ -8,7 +8,7 @@ import threading
 import time
 
 from .flow2robot import SEP, escape
-from .locators import best_locator, element_at, parse_bounds
+from .locators import best_locator, element_at, parse_bounds, walk
 from .recorder import MASKED_INPUT
 
 TREE_MAX_AGE_S = 1.0
@@ -45,14 +45,15 @@ class Session:
         self.lock = threading.RLock()   # one Maestro session: one action at a time
         self._tree, self._at, self._last_locator = None, 0.0, None
 
-    def tree(self):
-        """The current screen's flat element list and size, fetched again when older than a second."""
+    def tree(self, fresh=False):
+        """The current screen (nested and flat) and its size, fetched again when older than a second."""
         with self.lock:
-            if self._tree is None or time.monotonic() - self._at > TREE_MAX_AGE_S:
-                elements = self.lib.elements()
+            if fresh or self._tree is None or time.monotonic() - self._at > TREE_MAX_AGE_S:
+                screen = self.lib.screen()
+                elements = list(walk(screen))
                 root = max((parse_bounds(e.get("b")) or (0, 0, 0, 0) for e in elements),
                            key=lambda b: b[2] * b[3], default=(0, 0, 0, 0))
-                self._tree = {"elements": elements, "width": root[2] or 1, "height": root[3] or 1,
+                self._tree = {"screen": screen, "elements": elements, "width": root[2] or 1, "height": root[3] or 1,
                               "platform": getattr(self.lib, "platform", None)}
                 self._at = time.monotonic()
             return self._tree

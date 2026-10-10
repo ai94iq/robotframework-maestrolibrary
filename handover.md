@@ -3,7 +3,7 @@
 ## State (2026-10-10)
 
 - `main` is at the 0.5.0 release plus unreleased Studio work. The Studio core is done: `locators.py` (hit testing, locator choice), `studio.Session` and `stream.ScrcpyStream`.
-- The web layer is gone. `studio_qt.py` has `FrameDecoder` (PyAV H.264 to QImage) and `StreamReader` (QThread). The window, `ActionWorker` and `main()` come next (Tasks 5 and 6), so `python -m MaestroLibrary.studio` does nothing yet.
+- The web layer is gone. `studio_qt.py` has `FrameDecoder` (PyAV H.264 to QImage) and `StreamReader` (QThread). `ActionWorker` runs steps in order on its own thread (Task 5). The window and `main()` come next (Task 6), so `python -m MaestroLibrary.studio` does nothing yet.
 - `pip install -e ".[studio]"` installs PySide6 6.12.0 and av 19.0.1.
 - Python floor 3.12 (CHANGELOG Unreleased > Changed).
 
@@ -29,4 +29,4 @@ python -m bandit -q -c pyproject.toml -r src
 
 ## Next
 
-- Task 5 in `plan.md`: `ActionWorker` and `source_tree`.
+- Task 6 in `plan.md`: the Qt window (impeccable Operate mode), `main()`, then the device end-to-end run.

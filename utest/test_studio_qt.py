@@ -91,5 +91,72 @@ class StreamReaderTest(unittest.TestCase):
         self.assertEqual(failures, [])
 
 
+NESTED = [{"b": "[0,0][1080,2400]", "c": [
+    {"b": "[0,100][1080,300]", "rid": "com.app:id/search", "txt": "Search"},
+    {"b": "[0,400][1080,600]", "c": [{"b": "[0,400][540,600]", "txt": "Apps"}]}]}]
+
+
+@unittest.skipIf(av is None, "needs the studio extra (PySide6, av)")
+class ActionWorkerTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+
+    def setUp(self):
+        from test_studio import FakeLib
+        from MaestroLibrary.studio import Session
+        from MaestroLibrary.studio_qt import ActionWorker
+        self.lib = FakeLib(NESTED)
+        self.session = Session(self.lib)
+        self.worker = ActionWorker(self.session)
+        self.events = []
+        self.worker.recorded.connect(lambda line: self.events.append(("recorded", line)))
+        self.worker.failed.connect(lambda message: self.events.append(("failed", message)))
+        self.worker.tree.connect(lambda tree: self.events.append(("tree", len(tree["elements"]))))
+
+    def test_steps_run_in_order_and_refresh_the_tree(self):
+        self.worker.run("back", {})
+        self.worker.run("hide_keyboard", {})
+        self.assertEqual(self.lib.ran, [("go_back", []), ("hide_keyboard", [])])
+        self.assertEqual(self.events, [("recorded", "Go Back"), ("tree", 4), ("recorded", "Hide Keyboard"), ("tree", 4)])
+
+    def test_a_device_failure_records_nothing(self):
+        self.lib.fail = "Element not found"
+        self.worker.run("click", {"x": 500, "y": 200})
+        self.assertEqual(self.events[0], ("failed", "Element not found"))
+        self.assertEqual(self.session.lines, [])
+
+    def test_refused_text_says_why(self):
+        self.worker.run("type", {"text": "${1}"})
+        self.assertIn("JavaScript", self.events[0][1])
+
+    def test_steps_queue_across_threads(self):
+        from PySide6.QtCore import QThread
+        from PySide6.QtTest import QTest
+        thread = QThread()
+        self.worker.moveToThread(thread)
+        thread.start()
+        try:
+            for kind in ("back", "hide_keyboard", "back"):
+                self.worker.request.emit(kind, {})
+            for _ in range(100):
+                if len(self.lib.ran) == 3:
+                    break
+                QTest.qWait(20)
+        finally:
+            thread.quit()
+            thread.wait(2000)
+        self.assertEqual([r[0] for r in self.lib.ran], ["go_back", "hide_keyboard", "go_back"])
+
+
+class SourceTreeTest(unittest.TestCase):
+    @unittest.skipIf(av is None, "needs the studio extra (PySide6, av)")
+    def test_depths(self):
+        from MaestroLibrary.studio_qt import source_tree
+        self.assertEqual([(d, e["b"]) for d, e in source_tree(NESTED)],
+                         [(0, "[0,0][1080,2400]"), (1, "[0,100][1080,300]"), (1, "[0,400][1080,600]"),
+                          (2, "[0,400][540,600]")])
+
+
 if __name__ == "__main__":
     unittest.main()
