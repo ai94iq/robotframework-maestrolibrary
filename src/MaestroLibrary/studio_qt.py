@@ -7,13 +7,13 @@ import time
 import av
 from PySide6.QtCore import QObject, QPointF, QRectF, QSize, Qt, QThread, QTimer, Signal, Slot
 from PySide6.QtGui import (QAction, QActionGroup, QBrush, QColor, QFontDatabase, QGuiApplication, QIcon, QImage,
-                           QPainter, QPainterPath, QPalette, QPen, QPixmap)
+                           QKeySequence, QPainter, QPainterPath, QPalette, QPen, QPixmap, QShortcut)
 from PySide6.QtWidgets import (QAbstractItemView, QApplication, QFileDialog, QHBoxLayout, QHeaderView, QLabel,
                                QLineEdit, QListWidget, QListWidgetItem, QMainWindow, QMenu, QPushButton, QSizePolicy,
                                QSplitter, QTableWidget, QTableWidgetItem, QToolBar, QTreeWidget, QTreeWidgetItem,
                                QVBoxLayout, QWidget, QWidgetAction)
 
-from .locators import element_at, locator_candidates, parse_bounds
+from .locators import LOCATABLE, element_at, locator_candidates, parse_bounds
 
 MAX_SIDE = 8192            # larger frames are dropped: our scrcpy-server never sends them
 
@@ -52,13 +52,28 @@ class FrameDecoder:
         return self._images([None])
 
 
-def source_tree(screen, depth=0):
-    """(depth, element) pairs of a nested inspect_screen tree, depth first."""
-    pairs = []
+# System UI that is never part of the app under test: status bar, launcher/taskbar, on-screen keyboards.
+SYSTEM_IDS = ("com.android.systemui:", "com.android.launcher", "launcher3:", "nexuslauncher:", "inputmethod",
+              "honeyboard", "com.touchtype")
+
+
+def is_system(element):
+    return any(s in (element.get("rid") or "") for s in SYSTEM_IDS)
+
+
+def visible_tree(screen):
+    """[(element, children)] for the Source panel: system UI left out, and containers with nothing
+    a locator can use folded away, so every row is something you can click and locate."""
+    rows = []
     for element in screen:
-        pairs.append((depth, element))
-        pairs += source_tree(element.get("c", []), depth + 1)
-    return pairs
+        if is_system(element):
+            continue
+        children = visible_tree(element.get("c", []))
+        if any(element.get(k) for k in LOCATABLE):
+            rows.append((element, children))
+        else:
+            rows.extend(children)
+    return rows
 
 
 class ActionWorker(QObject):
@@ -89,7 +104,10 @@ class ActionWorker(QObject):
 
     @Slot(str)
     def apply_edit(self, op):
-        {"undo": self.session.undo, "clear": self.session.clear}[op]()
+        if op.startswith("remove:"):
+            self.session.remove(int(op.split(":", 1)[1]))
+        else:
+            {"undo": self.session.undo, "clear": self.session.clear}[op]()
         self.edited.emit()
 
     @Slot(str, dict)
@@ -208,6 +226,8 @@ def apply_theme(app):
         f"QToolBar#shell QLabel {{ color: {t['shell_ink']}; }}"
         f"QLabel#product {{ font-weight: 600; font-size: 14px; padding-right: 10px; }}"
         f"QLabel#pane {{ font-weight: 600; padding: 8px 10px 4px; }}"
+        f"QLabel#hint {{ color: {t['ink2']}; padding: 4px 12px; }}"
+        f"QLabel#title {{ font-size: 14px; font-weight: 600; }}"
         f"QSplitter::handle {{ background: {t['line']}; }}"
         f"QPushButton {{ padding: 4px 10px; }}"
         f"QLineEdit {{ border: 1px solid {t['line']}; border-radius: 6px; padding: 4px 6px; background: {t['ground']}; }}"
@@ -477,6 +497,16 @@ class DeviceView(QWidget):
             self.update()
 
 
+PICK_HINT = "Nothing selected. In Inspect mode (Ctrl+2), click an element on the screen or pick one in Source."
+
+
+def fit(table, max_rows=8):
+    """Size a table to its rows (up to max_rows), so empty space does not look like content."""
+    rows = min(table.rowCount(), max_rows)
+    height = table.horizontalHeader().height() + sum(table.rowHeight(r) for r in range(rows)) + 2 * table.frameWidth()
+    table.setFixedHeight(height + 2)
+
+
 class InspectorPane(QWidget):
     """Source tree and the selected element: suggested locators, attributes, actions."""
 
@@ -488,7 +518,7 @@ class InspectorPane(QWidget):
         self.tree, self.element = None, None
         layout = QVBoxLayout(self); layout.setContentsMargins(0, 0, 0, 0); layout.setSpacing(0)
         layout.addWidget(plain_label("Selected element", "pane"))
-        self.title = plain_label("Inspect mode: click an element on the screen, or pick one in the source tree.", "title")
+        self.title = plain_label(PICK_HINT, "title")
         self.title.setWordWrap(True); self.title.setContentsMargins(10, 0, 10, 6)
         layout.addWidget(self.title)
         self.locators = QTableWidget(0, 2)
@@ -503,47 +533,57 @@ class InspectorPane(QWidget):
             table.setWordWrap(True)
         self.attributes.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.locators.cellDoubleClicked.connect(lambda r, c: QGuiApplication.clipboard().setText(self.locators.item(r, 0).text()))
-        layout.addWidget(self.locators, 2)
-        actions = QHBoxLayout(); actions.setContentsMargins(8, 6, 8, 6)
+        layout.addWidget(self.locators)
+        self.actions = QWidget()
+        actions = QHBoxLayout(self.actions); actions.setContentsMargins(8, 6, 8, 6)
         for kind, text in (("click", "Tap"), ("long_press", "Long press"), ("wait_visible", "Wait visible"),
                            ("should_be_visible", "Should be visible"), ("text_should_be", "Text should be")):
             button = QPushButton(text)
             button.clicked.connect(lambda _=False, k=kind: self._act(k))
             actions.addWidget(button)
-        layout.addLayout(actions)
-        layout.addWidget(self.attributes, 2)
-        layout.addWidget(plain_label("Source", "pane"))
+        layout.addWidget(self.actions)
+        layout.addWidget(self.attributes)
+        layout.addWidget(plain_label("Source (system UI and unlabeled containers left out)", "pane"))
         self.source = QTreeWidget()
         self.source.setHeaderLabels(["Element", "Class"])
         self.source.header().setStretchLastSection(False)
         self.source.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.source.header().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         self.source.itemClicked.connect(lambda item: self.picked.emit(item.data(0, Qt.ItemDataRole.UserRole)))
-        layout.addWidget(self.source, 3)
+        layout.addWidget(self.source, 1)
+        self.show_element(None)
 
     def set_tree(self, tree):
         unchanged = self.tree is not None and tree.get("screen") == self.tree.get("screen")
         self.tree = tree
         if unchanged:                     # rebuilding a large tree every poll stalls the UI
             return
+        self.source.setUpdatesEnabled(False)          # one repaint for the whole rebuild
+        self.source.blockSignals(True)
         self.source.clear()
-        parents = {}
-        for depth, element in source_tree(tree.get("screen", [])):
-            item = QTreeWidgetItem([first_line(element), (element.get("cls") or "").rsplit(".", 1)[-1]])
-            item.setData(0, Qt.ItemDataRole.UserRole, element)
-            if depth and parents.get(depth - 1):
-                parents[depth - 1].addChild(item)
-            else:
-                self.source.addTopLevelItem(item)
-            parents[depth] = item
-        self.source.expandToDepth(3)
+
+        def add(rows, parent):
+            for element, children in rows:
+                item = QTreeWidgetItem([first_line(element), (element.get("cls") or "").rsplit(".", 1)[-1]])
+                item.setData(0, Qt.ItemDataRole.UserRole, element)
+                if parent is None:
+                    self.source.addTopLevelItem(item)
+                else:
+                    parent.addChild(item)
+                add(children, item)
+        add(visible_tree(tree.get("screen", [])), None)
+        self.source.expandAll()
+        self.source.blockSignals(False)
+        self.source.setUpdatesEnabled(True)
 
     def show_element(self, element):
         self.element = element
         self.locators.setRowCount(0)
         self.attributes.setRowCount(0)
+        for widget in (self.locators, self.actions, self.attributes):
+            widget.setVisible(element is not None)
         if not element:
-            self.title.setText("Nothing a locator can use here.")
+            self.title.setText(PICK_HINT)
             return
         self.title.setText(first_line(element) or "(no text)")
         for locator, count in locator_candidates(element, self.tree["elements"] if self.tree else [element]):
@@ -551,6 +591,8 @@ class InspectorPane(QWidget):
         for key, value in element.items():
             if key != "c":
                 self._row(self.attributes, key, str(value))
+        for table in (self.locators, self.attributes):
+            fit(table)
 
     @staticmethod
     def _row(table, *texts):
@@ -598,6 +640,8 @@ class RecorderPane(QWidget):
         self.lines = QListWidget()
         self.lines.setFont(QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont))
         self.lines.setWordWrap(True)
+        self.lines.setToolTip("Delete removes the selected line")
+        QShortcut(QKeySequence(Qt.Key.Key_Delete), self.lines, activated=self._remove_selected)
         layout.addWidget(self.lines, 1)
         self.empty = plain_label("Act on the device: each step becomes a Robot Framework line here.", "empty")
         self.empty.setContentsMargins(10, 6, 10, 6); self.empty.setWordWrap(True)
@@ -610,6 +654,11 @@ class RecorderPane(QWidget):
         save.clicked.connect(self.save)
         foot.addWidget(save)
         layout.addLayout(foot)
+
+    def _remove_selected(self):
+        row = self.lines.currentRow()
+        if row >= 0:
+            self.edit.emit(f"remove:{row}")
 
     def _record(self, on):
         self.session.recording = on
@@ -640,6 +689,10 @@ class RecorderPane(QWidget):
         self.window().statusBar().showMessage(f"Saved {path}", 5000)
 
 
+ACT_HINT = "Act: click to tap - drag to swipe - type, then Enter - right-click to assert"
+INSPECT_HINT = "Inspect: click to select (nothing runs on the device) - Ctrl+1 returns to Act"
+
+
 class MainWindow(QMainWindow):
     def __init__(self, session, worker, device_name="", platform="android"):
         super().__init__()
@@ -651,10 +704,19 @@ class MainWindow(QMainWindow):
         self.inspector = InspectorPane()
         self.recorder = RecorderPane(session, self.t)
         self._toolbar(device_name)
+        device_pane = QWidget()
+        column = QVBoxLayout(device_pane); column.setContentsMargins(0, 0, 0, 8); column.setSpacing(0)
+        column.addWidget(self.device, 1)
+        self.hint = plain_label(ACT_HINT, "hint")
+        self.hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.hint.setWordWrap(True)
+        column.addWidget(self.hint)
+        device_pane.setMinimumWidth(440)
         split = QSplitter()
-        for widget in (self.device, self.inspector, self.recorder):
+        for widget, stretch in ((device_pane, 4), (self.inspector, 3), (self.recorder, 3)):
             split.addWidget(widget)
-        split.setSizes([520, 430, 530])                  # the device screen leads
+            split.setStretchFactor(split.count() - 1, stretch)
+        split.setSizes([580, 420, 480])                  # the device screen leads
         split.setChildrenCollapsible(False)
         self.setCentralWidget(split)
         self.hover = plain_label("", "hover")
@@ -678,6 +740,9 @@ class MainWindow(QMainWindow):
         self.poll.timeout.connect(lambda: worker.poll.emit() if not self.pending else None)
         self.poll.start(5000)                 # each read waits for the screen to settle (up to 3 s)
         self.recorder.show_lines(session.lines)
+        for keys, slot in (("Ctrl+1", self.act_mode.trigger), ("Ctrl+2", self.inspect_mode.trigger),
+                           ("Ctrl+Z", lambda: worker.edit.emit("undo")), ("Ctrl+S", self.recorder.save)):
+            QShortcut(QKeySequence(keys), self, activated=slot)
 
     def _toolbar(self, device_name):
         bar = QToolBar("Studio"); bar.setObjectName("shell"); bar.setMovable(False)
@@ -686,8 +751,11 @@ class MainWindow(QMainWindow):
         self.addToolBar(bar)
         ink = self.t["shell_ink"]
         bar.addWidget(plain_label("MaestroLibrary Studio", "product"))
+        self.dot = plain_label("", "dot")
+        bar.addWidget(self.dot)
         self.state = plain_label(f"{device_name}: connecting", "state")
         bar.addWidget(self.state)
+        self._dot("ink2")
         bar.addSeparator()
         modes = QActionGroup(self); modes.setExclusive(True)
         self.act_mode = QAction(icon("act", ink), "Act", self, checkable=True, checked=True)
@@ -718,6 +786,7 @@ class MainWindow(QMainWindow):
         bar.addAction(self.secret)
 
     def _mode(self, mode):
+        self.hint.setText(ACT_HINT if mode == "act" else INSPECT_HINT)
         self.device.mode = mode
         self.device.pick = None
         self.device.update()
@@ -736,6 +805,7 @@ class MainWindow(QMainWindow):
         self.recorder.show_lines(self.session.lines, stamp=line is not None)
         if line is not None:
             self.device.flash()
+        self.message.setStyleSheet("")
         self.message.setText("Recorded" if line is not None else "Ran (recording is paused)")
 
     def _tree(self, tree):
@@ -747,8 +817,10 @@ class MainWindow(QMainWindow):
 
     def error(self, text):
         self.message.setText(text)
-        self.message.setStyleSheet(f"color: {self.t['rec']};")
-        QTimer.singleShot(6000, lambda: self.message.setStyleSheet(""))
+        self.message.setStyleSheet(f"color: {self.t['rec']};")       # stays until the next step works
+
+    def _dot(self, key):
+        self.dot.setPixmap(icon("record", self.t[key]).pixmap(14, 14))
 
     def show_newest(self, reader):
         image, _ = reader.take()
@@ -758,11 +830,13 @@ class MainWindow(QMainWindow):
     def go_live(self, image):
         if not self.live:
             self.live = self.worker.live = True
+            self._dot("ok")
             self.state.setText(self.state.text().split(":")[0] + ": live")
         self.device.set_frame(image)
 
     def fallback(self, reason):
         self.live = self.worker.live = False
+        self._dot("warn")
         self.state.setText(self.state.text().split(":")[0] + ": screenshots")
         self.state.setToolTip(html.escape(reason))      # tooltips detect rich text: keep it plain
         self.error(reason)

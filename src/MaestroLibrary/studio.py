@@ -126,6 +126,12 @@ class Session:
             if self.lines:
                 self.lines.pop()
 
+    def remove(self, index):
+        """Removes recorded line `index` (the action on the device is not undone)."""
+        with self.lock:
+            if 0 <= index < len(self.lines):
+                del self.lines[index]
+
     def clear(self):
         with self.lock:
             self.lines = []

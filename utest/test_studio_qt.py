@@ -366,6 +366,24 @@ class LiveStateTest(WindowTest):
         self.window.handles.setChecked(True)
         self.window.device.repaint()
 
+    def test_delete_removes_the_selected_line(self):
+        from PySide6.QtCore import Qt
+        from PySide6.QtTest import QTest
+        for kind in ("back", "hide_keyboard", "screenshot"):
+            self.worker.run(kind, {})
+        self.window.recorder.lines.setCurrentRow(1)
+        self.window.recorder.lines.setFocus()
+        QTest.keyClick(self.window.recorder.lines, Qt.Key.Key_Delete)
+        self.app.processEvents()
+        self.assertEqual(self.session.lines, ["Go Back", "Capture Page Screenshot"])
+
+    def test_inspector_is_compact_when_nothing_is_selected(self):
+        inspector = self.window.inspector
+        self.assertFalse(inspector.locators.isVisibleTo(inspector))
+        self.assertIn("Nothing selected", inspector.title.text())
+        self.window.inspect_mode.trigger()
+        self.assertTrue(self.window.hint.text().startswith("Inspect"))
+
 
 def studio_qt_button():
     from PySide6.QtWidgets import QPushButton
@@ -374,11 +392,16 @@ def studio_qt_button():
 
 class SourceTreeTest(unittest.TestCase):
     @unittest.skipIf(av is None, "needs the studio extra (PySide6, av)")
-    def test_depths(self):
-        from MaestroLibrary.studio_qt import source_tree
-        self.assertEqual([(d, e["b"]) for d, e in source_tree(NESTED)],
-                         [(0, "[0,0][1080,2400]"), (1, "[0,100][1080,300]"), (1, "[0,400][1080,600]"),
-                          (2, "[0,400][540,600]")])
+    def test_system_ui_and_unlabeled_containers_are_left_out(self):
+        from MaestroLibrary.studio_qt import visible_tree
+        screen = NESTED + [
+            {"b": "[0,0][1080,80]", "rid": "com.android.systemui:id/status_bar", "c": [{"txt": "10:58"}]},
+            {"rid": "com.google.android.inputmethod.latin:id/key", "txt": "q"}]
+
+        def shape(rows):
+            return [(e.get("txt") or e.get("rid"), shape(c)) for e, c in rows]
+        # the root and the row container have nothing locatable: their children move up a level
+        self.assertEqual(shape(visible_tree(screen)), [("Search", []), ("Apps", [])])
 
 
 if __name__ == "__main__":
