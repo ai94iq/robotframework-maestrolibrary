@@ -1,10 +1,11 @@
 """Raw H.264 screen stream from scrcpy-server (shipped with scrcpy), for the studio's live view."""
 import os
 import re
-import shutil
 import socket
 import subprocess
 import time
+
+from .mcp import find_exe
 
 REMOTE = "/data/local/tmp/scrcpy-server.jar"
 SAFE_SERIAL = re.compile(r"[\w.:-]+")
@@ -13,9 +14,13 @@ SAFE_VERSION = re.compile(r"\d+(\.\d+)*")
 
 def server_file():
     """(scrcpy-server path, scrcpy version) on Windows, Linux and macOS; SCRCPY_SERVER_PATH wins."""
-    scrcpy = shutil.which("scrcpy")
+    scrcpy = find_exe("scrcpy")        # PATH only, never the working directory
     if not scrcpy:
         raise RuntimeError("scrcpy is not on PATH; the live view needs it (recording still works).")
+    answer = subprocess.run([scrcpy, "--version"], capture_output=True, text=True, errors="replace", timeout=10).stdout
+    version = re.match(r"scrcpy (\d+(?:\.\d+)*)\b", answer)
+    if not version:
+        raise RuntimeError(f"{scrcpy} does not answer like scrcpy, so it is not used.")
     here = os.path.dirname(os.path.realpath(scrcpy))
     candidates = [os.environ.get("SCRCPY_SERVER_PATH"), os.path.join(here, "scrcpy-server"),
                   os.path.join(here, "..", "share", "scrcpy", "scrcpy-server"),
@@ -24,8 +29,7 @@ def server_file():
     path = next((c for c in candidates if c and os.path.isfile(c)), None)
     if not path:
         raise RuntimeError("scrcpy-server was not found; set SCRCPY_SERVER_PATH to the file.")
-    answer = subprocess.run([scrcpy, "--version"], capture_output=True, text=True, timeout=10).stdout.split()
-    return path, answer[1] if len(answer) > 1 else ""
+    return path, version.group(1)
 
 
 class ScrcpyStream:

@@ -191,17 +191,21 @@ class StreamTest(unittest.TestCase):
 
     def test_server_file_lookup(self):
         from MaestroLibrary import stream
-        with mock.patch.object(stream.shutil, "which", return_value=None):
+        with mock.patch.object(stream, "find_exe", return_value=None):
             with self.assertRaisesRegex(RuntimeError, "scrcpy is not on PATH"):
                 stream.server_file()
         with tempfile.TemporaryDirectory() as tmp:
             exe, server = os.path.join(tmp, "scrcpy"), os.path.join(tmp, "scrcpy-server")
             open(server, "w").close()
             answer = mock.Mock(stdout="scrcpy 5.0 <https://github.com/Genymobile/scrcpy>\n")
-            with mock.patch.object(stream.shutil, "which", return_value=exe), \
+            with mock.patch.object(stream, "find_exe", return_value=exe), \
                     mock.patch.object(stream.subprocess, "run", return_value=answer), \
                     mock.patch.dict(os.environ, {"SCRCPY_SERVER_PATH": ""}):
                 self.assertEqual(stream.server_file(), (server, "5.0"))
+                answer.stdout = "fake 1.0"
+                with self.assertRaisesRegex(RuntimeError, "does not answer like scrcpy"):
+                    stream.server_file()
+                answer.stdout = "scrcpy 5.0 <https://github.com/Genymobile/scrcpy>\n"
                 os.remove(server)
                 with self.assertRaisesRegex(RuntimeError, "SCRCPY_SERVER_PATH"):
                     stream.server_file()
