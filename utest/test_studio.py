@@ -71,6 +71,15 @@ class SessionTest(unittest.TestCase):
                          r"Click Element    point\=50%,21%    # GAP: no unique locator, ask for a test id")
         self.assertEqual(self.lib.ran, [("click_element", ["point=50%,21%"])])
 
+    def test_preview_matches_the_recorded_line(self):
+        for kind, kw in (("click", {"x": 500, "y": 200}), ("click", {"x": 540, "y": 500}), ("back", {}),
+                         ("swipe", {"x": 540, "y": 1800, "x2": 540, "y2": 600}),
+                         ("text_should_be", {"x": 500, "y": 200, "text": "Search @{x}"})):
+            planned = self.s.preview(kind, self.s.tree(), **kw)
+            self.assertEqual(planned, self.s.act(kind, **kw))
+        self.assertEqual(self.s.preview("type", self.s.tree(), text="pw", secret=True),
+                         "Input Text Into Current Element    ${PASSWORD}")
+
     def test_blank_space_records_point(self):
         self.assertTrue(self.s.act("click", 500, 2300).startswith(r"Click Element    point\=46%,96%"))
 

@@ -40,6 +40,20 @@ def no_maestro_js(text):
     return text
 
 
+def pct(tree, x, y):
+    return round(100 * x / tree["width"]), round(100 * y / tree["height"])
+
+
+def locate(tree, x, y):
+    """(locator, comment) for the element at device point x, y; a percent point and the GAP note without one."""
+    element = element_at(tree["elements"], x, y)
+    locator = best_locator(element, tree["elements"]) if element else None
+    if locator:
+        return locator, ""
+    px, py = pct(tree, x, y)
+    return f"point={px}%,{py}%", GAP
+
+
 class Session:
     """Runs studio actions on the device through MaestroLibrary and records the matching Robot lines."""
 
@@ -60,19 +74,6 @@ class Session:
                               "platform": getattr(self.lib, "platform", None)}
             return self._tree
 
-    def _pct(self, x, y):
-        t = self.tree()
-        return round(100 * x / t["width"]), round(100 * y / t["height"])
-
-    def _locate(self, x, y):
-        t = self.tree()
-        element = element_at(t["elements"], x, y)
-        locator = best_locator(element, t["elements"]) if element else None
-        if locator:
-            return locator, ""
-        px, py = self._pct(x, y)
-        return f"point={px}%,{py}%", GAP
-
     def _run(self, keyword, args, comment=""):
         self.lib.run_keyword(keyword, list(args))          # raises: nothing is recorded
         self._tree = None                                   # the screen changed
@@ -81,6 +82,21 @@ class Session:
         line = SEP.join([KEYWORD_NAMES[keyword]] + [arg(a) for a in args]) + comment
         self.lines.append(line)
         return line
+
+    def preview(self, kind, tree, x=None, y=None, x2=None, y2=None, text=None, secret=False):
+        """The line `act` would most likely record, from `tree` and without touching the device or the lock.
+        Shown while the step runs; the line `act` returns replaces it."""
+        if kind == "type":
+            return SEP.join(["Input Text Into Current Element", MASKED_INPUT if secret else arg(text)])
+        if kind in ELEMENT_KINDS:
+            locator, comment = locate(tree, x, y)
+            args = [locator] + ([text] if kind == "text_should_be" else [])
+            return SEP.join([KEYWORD_NAMES[ELEMENT_KINDS[kind]]] + [arg(a) for a in args]) + comment
+        if kind == "swipe":
+            return SEP.join(["Swipe By Percent"] + [str(n) for n in (*pct(tree, x, y), *pct(tree, x2, y2))])
+        if kind == "launch":
+            return SEP.join(["Open Application", arg(self.app_id or getattr(self.lib, "app_id", "") or "")])
+        return KEYWORD_NAMES[SIMPLE_KINDS[kind]]
 
     def act(self, kind, x=None, y=None, x2=None, y2=None, text=None, secret=False):
         """Runs one action; returns its recorded line (None while recording is off)."""
@@ -91,13 +107,13 @@ class Session:
                 return self._type(no_maestro_js(str(text)), secret)
             if kind in ELEMENT_KINDS:
                 expected = [no_maestro_js(str(text))] if kind == "text_should_be" else []
-                locator, comment = self._locate(x, y)
+                locator, comment = locate(self.tree(), x, y)
                 line = self._run(ELEMENT_KINDS[kind], [locator] + expected, comment)
                 self._last_locator = locator if kind == "click" else None
                 return line
             self._last_locator = None
             if kind == "swipe":
-                return self._run("swipe_by_percent", [*self._pct(x, y), *self._pct(x2, y2)])
+                return self._run("swipe_by_percent", [*pct(self.tree(), x, y), *pct(self.tree(), x2, y2)])
             if kind == "launch":
                 return self._run("open_application", [self.app_id or self.lib.app_id])
             return self._run(SIMPLE_KINDS[kind], [])
@@ -222,10 +238,12 @@ def main(argv=None):
 
 
 def connected_devices(lib):
-    """The ids of the connected devices (for the device dropdown); empty when Maestro's list cannot be read."""
+    """The connected devices as {device_id, name, type} (for the device dropdown); empty when Maestro's list cannot
+    be read. Maestro's type is "real", "emulator" or "simulator"."""
     try:
         content = lib.mcp.call_tool("list_devices", {})
-        return [d["device_id"] for d in json.loads(content[0]["text"])["devices"] if d.get("connected")]
+        return [{"device_id": str(d["device_id"]), "name": str(d.get("name") or d["device_id"]),
+                 "type": str(d.get("type", ""))} for d in json.loads(content[0]["text"])["devices"] if d.get("connected")]
     except (LookupError, TypeError, ValueError):
         return []
 

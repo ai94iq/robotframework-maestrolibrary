@@ -29,7 +29,7 @@ python -m bandit -q -c pyproject.toml -r src
 
 ## Next
 
-- UI: Lucide 1.55.0 icons, segmented mode control, cards with shadows, a floating device control bar, one title style for both panes, a click-to-cycle theme button (system, light, dark), menus and tooltips drawn as one rounded surface, 150 ms tooltips, and a device dropdown in the pill when several devices are connected (switching reopens Studio on that device and keeps the recorded lines). Waiting for the user's look.
+- UI: Lucide 1.55.0 icons, segmented mode control, cards with shadows, a floating device control bar, one title style for both panes, a click-to-cycle theme button (system, light, dark), menus and tooltips drawn as one rounded surface, 150 ms tooltips, and a device dropdown in the pill when several devices are connected (real devices and emulators get their own icons; switching reopens Studio on that device and keeps the recorded lines), steps shown as pending lines while Maestro runs them. Waiting for the user's look.
 - Then one device batch: end to end, replay, fallback.
 
 - Device runs at the end: end to end (make the harness read element positions from the window's own tree, not Maestro on the UI thread), replay of the saved test, fallback without scrcpy.

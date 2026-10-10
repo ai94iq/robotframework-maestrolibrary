@@ -284,6 +284,30 @@ class WindowTest(WindowCase):
             with open(os.path.join(tmp, "t.robot"), encoding="utf-8") as f:
                 self.assertIn("    Go Back", f.read())
 
+    def test_a_step_shows_at_once_as_pending(self):
+        from MaestroLibrary.studio_qt import PENDING
+        self.worker.request.disconnect(self.worker.run)          # the step has not run yet
+        self.window.submit("back", {})
+        lines = self.window.recorder.lines
+        self.assertEqual(lines.count(), 1)
+        self.assertTrue(lines.item(0).data(PENDING))
+        self.assertIn("Go Back", lines.item(0).text())
+        self.worker.run("back", {})
+        self.assertEqual(lines.count(), 1)
+        self.assertFalse(lines.item(0).data(PENDING))
+        self.assertEqual(self.window.queued, [])
+
+    def test_a_failed_step_drops_its_pending_line(self):
+        self.worker.request.disconnect(self.worker.run)
+        self.window.submit("type", {"text": "${1}"})
+        self.assertEqual(self.window.recorder.lines.count(), 1)
+        self.worker.run("type", {"text": "${1}"})
+        self.assertEqual(self.window.recorder.lines.count(), 0)
+
+    def test_locators_table_has_no_selection(self):
+        from PySide6.QtWidgets import QAbstractItemView
+        self.assertEqual(self.window.inspector.locators.selectionMode(), QAbstractItemView.SelectionMode.NoSelection)
+
     def test_undo_clear_and_record_toggle(self):
         self.worker.run("back", {})
         self.worker.run("hide_keyboard", {})
@@ -368,7 +392,9 @@ class ThemeTest(WindowCase):
         QToolTip.showText(QPoint(50, 50), "tip")
         tips = [w for w in self.app.topLevelWidgets() if w.metaObject().className() == "QTipLabel"]
         self.assertTrue(tips and all(w.testAttribute(Qt.WidgetAttribute.WA_TranslucentBackground) for w in tips))
-        self.assertEqual(self.app.style().styleHint(QStyle.StyleHint.SH_ToolTip_WakeUpDelay), 150)
+        from MaestroLibrary.studio_qt import TIP_DELAY
+        self.assertEqual(self.app.style().styleHint(QStyle.StyleHint.SH_ToolTip_WakeUpDelay), TIP_DELAY)
+        self.assertFalse(self.app.isEffectEnabled(Qt.UIEffect.UI_AnimateTooltip))
 
     def test_buttons_take_focus_by_keyboard_only(self):
         from PySide6.QtCore import Qt
@@ -382,7 +408,8 @@ class ThemeTest(WindowCase):
 
     def test_several_devices_make_the_pill_a_dropdown(self):
         from MaestroLibrary.studio_qt import MainWindow
-        window = MainWindow(self.session, self.worker, device_name="SER", settings=self.settings, devices=["SER", "A&B"])
+        window = MainWindow(self.session, self.worker, device_name="SER", settings=self.settings, devices=[{"device_id": "SER", "type": "real"},
+                                                                                       {"device_id": "A&B", "name": "Pixel_9", "type": "emulator"}])
         self.addCleanup(window.close)
         window.show()
         self.assertTrue(window.chevron.isVisibleTo(window))
@@ -392,6 +419,8 @@ class ThemeTest(WindowCase):
         self.assertIsNone(window.next_device)
         window.switch_device("A&B")
         self.assertEqual(window.next_device, "A&B")
+        from MaestroLibrary.studio_qt import device_icon
+        self.assertEqual([device_icon(d) for d in window.devices], ["device", "monitor-smartphone"])
 
     def test_invalid_stored_theme_falls_back_to_system(self):
         self.settings.setValue("theme", "neon")
@@ -485,7 +514,7 @@ class MainTest(unittest.TestCase):
         with mock.patch.object(MaestroLibrary, "MaestroLibrary", side_effect=make_lib),                 mock.patch.object(studio_qt, "MainWindow", side_effect=window),                 mock.patch.object(studio_qt, "QSettings", return_value=ini),                 mock.patch.object(QApplication, "exec", side_effect=run):
             self.assertEqual(studio.main([]), 0)
         self.assertEqual([d for d, _ in made], [None, "B"])
-        self.assertEqual(windows[0].devices, ["A", "B"])
+        self.assertEqual([d["device_id"] for d in windows[0].devices], ["A", "B"])
         self.assertEqual(windows[1].session.lines, ["Go Back"])
         self.assertEqual(windows[1].recorder.name.text(), "My test")
         for _, lib in made:

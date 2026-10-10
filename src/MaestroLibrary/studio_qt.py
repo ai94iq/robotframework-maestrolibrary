@@ -109,6 +109,7 @@ class ActionWorker(QObject):
     snap = Signal()                    # take one now
     edit = Signal(str)                 # "undo" or "clear"
     edited = Signal()
+    ended = Signal()                   # the step itself ended (before the screen is read again)
     done = Signal()                    # a step finished, whatever its outcome
 
     def __init__(self, session):
@@ -135,6 +136,7 @@ class ActionWorker(QObject):
         except Exception as err:       # a refused input or a device failure: nothing was recorded
             self.failed.emit(str(err) or type(err).__name__)
         finally:
+            self.ended.emit()
             self.refresh()
             if not self.live:
                 self.grab()
@@ -329,7 +331,7 @@ QToolTip {{ background: {raised}; color: {ink}; border: 1px solid {line}; border
 """
 
 
-TIP_DELAY = 150            # ms before a tooltip shows (Qt's default is 700)
+TIP_DELAY = 50             # ms before a tooltip shows (Qt's default is 700)
 
 
 class StudioStyle(QProxyStyle):
@@ -362,6 +364,8 @@ def apply_theme(app, mode="system"):
         app.studio_style, app.studio_filter = StudioStyle("Fusion"), SurfaceFilter(app)
         app.setStyle(app.studio_style)
         app.installEventFilter(app.studio_filter)
+        for effect in (Qt.UIEffect.UI_FadeTooltip, Qt.UIEffect.UI_AnimateTooltip):     # no fade on top of the wait
+            app.setEffectEnabled(effect, False)
     p = QPalette()
     for role, key in ((QPalette.ColorRole.Window, "ground"), (QPalette.ColorRole.Base, "panel"),
                       (QPalette.ColorRole.AlternateBase, "raised"), (QPalette.ColorRole.Button, "raised"),
@@ -749,6 +753,9 @@ class MatchDelegate(QStyledItemDelegate):
         return QSize(size.width() + 16, max(size.height(), 32))
 
 
+PENDING = Qt.ItemDataRole.UserRole + 1     # a recorder row for a step that is still running
+
+
 class LineDelegate(QStyledItemDelegate):
     """A recorded line like Maestro's editor: number gutter, keyword, locator and other arguments in colours.
 
@@ -799,6 +806,8 @@ class LineDelegate(QStyledItemDelegate):
         t = self.t
         painter.save()
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        if index.data(PENDING):
+            painter.setOpacity(0.5)            # still running on the device
         box = QRectF(option.rect).adjusted(6, 1, -6, -1)
         state = option.state
         fill = index.data(Qt.ItemDataRole.BackgroundRole)
@@ -895,6 +904,7 @@ class InspectorPane(QWidget):
             table.setWordWrap(True)
         self.locators.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
         self.locators.setColumnWidth(2, 44)
+        self.locators.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)  # copy is by button
         self.attributes.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.locators.cellDoubleClicked.connect(lambda r, c: self._copy(r))
         layout.addWidget(self.locators)
@@ -1122,12 +1132,20 @@ class RecorderPane(QWidget):
         self.status.setPixmap(dot_pixmap(self.t[key], 8))
         self.status.setVisible(bool(text))
 
-    def show_lines(self, lines, stamp=False):
+    def show_lines(self, lines, stamp=False, pending=()):
+        """The recorded lines, then the `pending` ones (steps still running), dimmed and unnumbered."""
         self.lines.clear()
         for number, line in enumerate(lines, 1):
             item = QListWidgetItem(f"{number:>3}  {line}")
             self.lines.addItem(item)
-        self.empty.setVisible(not lines)
+        for line in pending:
+            item = QListWidgetItem(f"     {line}")
+            item.setData(PENDING, True)
+            item.setFlags(Qt.ItemFlag.NoItemFlags)
+            self.lines.addItem(item)
+        if pending:
+            self.lines.scrollToBottom()
+        self.empty.setVisible(not lines and not pending)
         if stamp and lines:
             last = self.lines.item(self.lines.count() - 1)
             last.setBackground(QColor(self.t["rec_soft"]))
@@ -1190,6 +1208,11 @@ THEME_TIPS = {"system": "Theme: System (click to change)", "light": "Theme: Ligh
               "dark": "Theme: Dark (click to change)"}
 
 
+def device_icon(device):
+    """Emulators and simulators get a screen-and-phone icon; real devices, a phone."""
+    return "monitor-smartphone" if device.get("type") in ("emulator", "simulator") else "device"
+
+
 class Pill(QFrame):
     """The device pill; with several devices a click on it opens the device list."""
 
@@ -1204,8 +1227,9 @@ class MainWindow(QMainWindow):
     def __init__(self, session, worker, device_name="", platform="android", settings=None, devices=()):
         super().__init__()
         self.session, self.worker, self.platform = session, worker, platform
-        self.device_name, self.devices, self.next_device = device_name, list(devices), None
-        self.live, self.pending, self._icons, self._cards = False, 0, [], []
+        self.device_name, self.next_device = device_name, None
+        self.devices = [d if isinstance(d, dict) else {"device_id": d} for d in devices]
+        self.live, self.pending, self._icons, self._cards, self.queued = False, 0, [], [], []
         self.settings = settings if settings is not None else QSettings("MaestroLibrary", "Studio")
         mode = self.settings.value("theme", "system")
         self.theme_mode = mode if mode in THEME_MODES else "system"
@@ -1250,11 +1274,12 @@ class MainWindow(QMainWindow):
         self.device.hovered.connect(self.hover.setText)
         self.recorder.edit.connect(worker.edit)
         self.recorder.saved.connect(self.recorder.say)
-        worker.edited.connect(lambda: self.recorder.show_lines(self.session.lines))
+        worker.edited.connect(lambda: self._show_pending())
         worker.recorded.connect(self._recorded)
         worker.failed.connect(self.error)
         worker.tree.connect(self._tree)
         worker.done.connect(self._done)
+        worker.ended.connect(self._ended)
         worker.image.connect(self.device.set_frame)
         self.poll = QTimer(self)
         self.poll.timeout.connect(lambda: worker.poll.emit() if not self.pending else None)
@@ -1289,6 +1314,9 @@ class MainWindow(QMainWindow):
             pill.setCursor(Qt.CursorShape.PointingHandCursor)
             pill.setToolTip("Switch device")
             pill.clicked.connect(lambda: self._device_menu(pill))
+            sizing = self._devices_menu()
+            pill.setMinimumWidth(sizing.sizeHint().width())     # pill and menu share one width
+            sizing.deleteLater()
         bar.addWidget(pill)
         gap()
         self._dot("ink3")
@@ -1370,10 +1398,29 @@ class MainWindow(QMainWindow):
     def submit(self, kind, kwargs):
         self.pending += 1
         self.recorder.say(f"Running {self.pending} step{'s' if self.pending > 1 else ''}")
+        self.queued.append(self._preview(kind, kwargs))
+        self._show_pending()
         self.worker.request.emit(kind, kwargs)
 
+    def _preview(self, kind, kwargs):
+        """The line this step will most likely record, shown at once: Maestro takes seconds to finish a step."""
+        if not self.session.recording or not self.device.tree:
+            return None
+        try:
+            return self.session.preview(kind, self.device.tree, **kwargs)
+        except Exception:          # only a preview; the step itself reports any problem
+            return None
+
+    def _show_pending(self, stamp=False):
+        self.recorder.show_lines(self.session.lines, stamp=stamp, pending=[line for line in self.queued if line])
+
+    def _ended(self):
+        if self.queued:
+            self.queued.pop(0)
+        self._show_pending()
+
     def _recorded(self, line):
-        self.recorder.show_lines(self.session.lines, stamp=line is not None)
+        self._show_pending(stamp=line is not None)
         if line is not None:
             self.device.flash()
         text = "Recorded" if line is not None else "Ran (recording is paused)"
@@ -1410,29 +1457,37 @@ class MainWindow(QMainWindow):
         self._theme_look()
         self.recorder.retheme()
         self.inspector.retheme()
-        self.recorder.show_lines(self.session.lines)
+        self._show_pending()
         self._dot("ok" if self.live else "ink3")
         self.device.update()
 
     def _dot(self, key):
         ratio = self.devicePixelRatioF()
         self.dot.setPixmap(dot_pixmap(self.t[key], ratio=ratio))
-        self.device_icon.setPixmap(icon("device", self.t["ink"]).pixmap(ICON_SIZE, ratio))
+        current = next((d for d in self.devices if d["device_id"] == self.device_name), {})
+        self.device_icon.setPixmap(icon(device_icon(current), self.t["ink"]).pixmap(ICON_SIZE, ratio))
         self.chevron.setPixmap(icon("chevron-down", self.t["ink2"]).pixmap(ICON_SIZE, ratio))
 
     def _device_menu(self, pill):
-        menu = QMenu(self)
-        group = QActionGroup(menu)
-        for device in self.devices:
-            action = menu.addAction(device.replace("&", "&&"))       # a device id is text, not a mnemonic
-            action.setCheckable(True); action.setChecked(device == self.device_name)
-            action.triggered.connect(lambda _=False, d=device: self.switch_device(d))
-            group.addAction(action)
+        menu = self._devices_menu()
+        menu.setFixedWidth(pill.width())               # the pill is sized to fit it (see _toolbar)
         menu.exec(pill.mapToGlobal(pill.rect().bottomLeft()))
+        menu.deleteLater()
+
+    def _devices_menu(self):
+        menu = QMenu(self)
+        for device in self.devices:
+            serial, name = device["device_id"], device.get("name") or device["device_id"]
+            label = serial if name == serial else f"{name.replace('_', ' ')}  ({serial})"
+            action = menu.addAction(icon(device_icon(device), self.t["ink"]), label.replace("&", "&&"))  # no mnemonic
+            if serial == self.device_name:
+                font = action.font(); font.setBold(True); action.setFont(font)
+            action.triggered.connect(lambda _=False, d=serial: self.switch_device(d))
+        return menu
 
     def switch_device(self, device):
         """Closes this window; the caller (studio.main) sees next_device and reopens Studio on that device."""
-        if device != self.device_name and device in self.devices:
+        if device != self.device_name and device in [d["device_id"] for d in self.devices]:
             self.next_device = device
             self.close()
 
