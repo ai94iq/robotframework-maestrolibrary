@@ -317,6 +317,14 @@ class WindowTest(WindowCase):
         self.assertEqual(window._lane("click"), "main")          # behind the running Maestro step
         window.touch = None
 
+    def test_recording_toggle_keeps_one_weight_so_its_text_fits(self):
+        from PySide6.QtGui import QFont
+        button = self.window.recorder.record_button
+        for _ in range(2):                     # recording, then paused
+            self.app.processEvents()
+            self.assertEqual(button.font().weight(), QFont.Weight.DemiBold)
+            button.click()
+
     def test_locators_table_has_no_selection(self):
         from PySide6.QtWidgets import QAbstractItemView
         self.assertEqual(self.window.inspector.locators.selectionMode(), QAbstractItemView.SelectionMode.NoSelection)

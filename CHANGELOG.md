@@ -12,6 +12,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions: [Sem
   `studio` extra). A device
   switcher for several connected devices, a theme button (System, Light, Dark; remembered) and
   keyboard shortcuts.
+- Studio desktop bundles on each GitHub release: Windows `.exe`, Linux `.tar.gz`, macOS `.dmg` (arm64 and
+  Intel), built with PyInstaller and an LGPL FFmpeg that only decodes H.264 (no GPL parts; the build checks it).
+  Unsigned for now. `find_exe` also looks where the installers put maestro and adb, for apps opened from Finder.
 ### Fixed
 - `Capture Page Screenshot` and the other screenshot keywords work outside a Robot run (plain Python,
   Studio): they save to the working directory instead of failing with `RobotNotRunningError`.

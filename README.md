@@ -234,6 +234,10 @@ and Python steps are not Maestro commands, so they are not in the flow; waiting 
 pip install "robotframework-maestrolibrary[studio]"      # PySide6, PyAV and grpcio
 python -m MaestroLibrary.studio --app com.android.vending
 ```
+Or, without Python, download the Windows `.exe`, Linux `.tar.gz` or macOS `.dmg` from the
+[GitHub release](https://github.com/ai94iq/robotframework-maestrolibrary/releases) (unsigned for now; the release text
+says how to open them). Maestro, adb and scrcpy are still needed on the machine.
+
 A window shows the device screen live, and every action you take on it runs on the device while
 the matching Robot line is recorded:
 

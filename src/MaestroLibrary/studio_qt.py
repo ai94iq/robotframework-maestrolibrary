@@ -326,11 +326,13 @@ QPushButton {{ background: {raised}; border: 1px solid {line}; border-radius: 8p
 QPushButton:hover {{ background: {hover}; }}
 QPushButton:pressed {{ background: {line}; }}
 QPushButton:focus {{ border-color: {accent}; }}
-QPushButton#recording {{ background: transparent; border: 1px solid transparent; border-radius: 8px; padding: 4px 10px; color: {ink2}; }}
+/* semibold in every state: a weight that changes with :checked is not in the size hint, so the text clipped */
+QPushButton#recording {{ background: transparent; border: 1px solid transparent; border-radius: 8px; padding: 4px 10px; color: {ink2};
+    font-weight: 600; }}
 QPushButton#recording:hover {{ background: {hover}; }}
 QPushButton#recording[paused="true"], QPushButton#recording[paused="true"]:hover {{ background: {warn_soft}; color: {warn};
     border-radius: 12px; font-weight: 600; }}
-QPushButton#recording:checked {{ color: {ink}; font-weight: 600; }}
+QPushButton#recording:checked {{ color: {ink}; }}
 QPushButton#recording:focus {{ border-color: {accent}; }}
 QPushButton#primary {{ background: {accent}; color: {accent_ink}; border-color: {accent}; font-weight: 600; }}
 QPushButton#primary:hover {{ background: {select}; }}
