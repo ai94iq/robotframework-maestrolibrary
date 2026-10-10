@@ -110,6 +110,8 @@ class ActionWorker(QObject):
     edit = Signal(str)                 # "undo" or "clear"
     edited = Signal()
     ended = Signal()                   # the step itself ended (before the screen is read again)
+    retarget = Signal(str)             # switch to this device, after the steps already queued
+    switched = Signal(str, str)        # (device, platform) now in use
     done = Signal()                    # a step finished, whatever its outcome
 
     def __init__(self, session):
@@ -117,9 +119,41 @@ class ActionWorker(QObject):
         self.session = session
         self.screenshot, self.live = None, False
         self.request.connect(self.run)
-        self.poll.connect(self.refresh)
+        self.poll.connect(self._polled)
+        self._poll_queued = False
         self.snap.connect(self.grab)
         self.edit.connect(self.apply_edit)
+        self.retarget.connect(self.switch)
+
+    def request_poll(self):
+        """Queues one screen read, unless one is already waiting: a read takes seconds on a phone, and reads
+        queued faster than that would hold back every step and device switch behind them (measured)."""
+        if not self._poll_queued:
+            self._poll_queued = True
+            self.poll.emit()
+
+    @Slot()
+    def _polled(self):
+        self._poll_queued = False
+        self.refresh()
+
+    @Slot(str)
+    def switch(self, device):
+        """Points the library at another device; Maestro's one process serves them all (each call names it)."""
+        lib = self.session.lib
+        with self.session.lock:
+            old = lib.device, lib.platform
+            lib.device, lib.platform = device, None
+            try:
+                lib.device_id()
+            except Exception as err:
+                lib.device, lib.platform = old
+                self.switched.emit(*old)                     # back on the old device's view, then say why
+                self.failed.emit(f"Could not switch to {device}: {err}")
+                return
+            self.session._tree = self.session._last_locator = None
+        self.switched.emit(lib.device, lib.platform)
+        self.refresh()
 
     @Slot(str)
     def apply_edit(self, op):
@@ -132,11 +166,14 @@ class ActionWorker(QObject):
     @Slot(str, dict)
     def run(self, kind, kwargs):
         try:
-            self.recorded.emit(self.session.act(kind, **kwargs))
+            line = self.session.act(kind, **kwargs)
         except Exception as err:       # a refused input or a device failure: nothing was recorded
-            self.failed.emit(str(err) or type(err).__name__)
-        finally:
             self.ended.emit()
+            self.failed.emit(str(err) or type(err).__name__)
+        else:
+            self.ended.emit()          # the pending line goes first, so the recorded one is the last drawn
+            self.recorded.emit(line)
+        finally:
             self.refresh()
             if not self.live:
                 self.grab()
@@ -265,7 +302,6 @@ QLabel#state {{ color: {ink}; }}
 QLabel#pane {{ font-size: 12px; font-weight: 500; color: {ink2}; }}
 QLabel#hint, QLabel#hover, QLabel#message {{ color: {ink2}; font-size: 12px; }}
 QLabel#title {{ font-size: 17px; font-weight: 700; color: {ink}; }}
-QLabel#title[empty="true"] {{ font-size: 13px; font-weight: 400; color: {ink2}; }}
 QLabel#chip {{ background: {accent_soft}; color: {accent_text}; font-size: 11px; font-weight: 600; border-radius: 9px;
     padding: 2px 8px; }}
 QLabel#heading, QLineEdit#testname {{ font-size: 17px; font-weight: 700; color: {ink}; padding: 6px 8px;
@@ -274,7 +310,8 @@ QWidget#actions QPushButton {{ min-height: 30px; padding: 0 12px; }}
 QWidget#actions QPushButton::menu-indicator {{ image: url({chevron_down}); width: 12px; height: 12px;
     subcontrol-origin: padding; subcontrol-position: right center; right: 8px; }}
 QWidget#actions QPushButton[hasMenu="true"] {{ padding-right: 28px; }}
-QLabel#empty {{ color: {ink2}; }}
+QLabel#empty_title {{ font-size: 14px; font-weight: 600; color: {ink}; }}
+QLabel#empty_text {{ font-size: 12px; color: {ink2}; }}
 QPushButton {{ background: {raised}; border: 1px solid {line}; border-radius: 8px; padding: 6px 12px; }}
 QPushButton:hover {{ background: {hover}; }}
 QPushButton:pressed {{ background: {line}; }}
@@ -495,6 +532,56 @@ def first_line(element):
     return text.split("\n")[0]
 
 
+class EmptyState(QWidget):
+    """A centred icon, title and one line of help, for a pane with nothing to show yet."""
+
+    def __init__(self, theme, name, title, text):
+        super().__init__()
+        self.t, self.name = theme, name
+        layout = QVBoxLayout(self); layout.setContentsMargins(24, 24, 24, 24); layout.setSpacing(6)
+        layout.addStretch()
+        self.icon = plain_label("", "empty_icon")
+        self.title, self.text = plain_label("", "empty_title"), plain_label("", "empty_text")
+        self.text.setWordWrap(True)
+        for widget in (self.icon, self.title, self.text):
+            widget.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            layout.addWidget(widget)
+        layout.addStretch()
+        self.show_text(title, text)
+
+    def show_text(self, title, text, name=None):
+        self.name = name or self.name
+        self.title.setText(title)
+        self.text.setText(text)
+        self.retheme()
+
+    def retheme(self):
+        self.icon.setPixmap(icon(self.name, self.t["ink3"]).pixmap(QSize(32, 32), self.devicePixelRatioF()))
+
+
+def app_icon():
+    """Studio's window and taskbar icon: a white phone with a record dot on the accent, drawn per size."""
+    result = QIcon()
+    for side in (16, 24, 32, 48, 64, 128, 256):
+        pm = QPixmap(side, side)
+        pm.fill(Qt.GlobalColor.transparent)
+        p = QPainter(pm)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QColor("#4361ee"))
+        p.drawRoundedRect(QRectF(0, 0, side, side), side * 0.22, side * 0.22)
+        inset = side * 0.18
+        QSvgRenderer(QByteArray(svg_bytes("device", "#ffffff", pixels=side - 2 * inset))).render(
+            p, QRectF(inset, inset, side - 2 * inset, side - 2 * inset))
+        p.setBrush(QColor("#ef4444"))
+        p.setPen(QPen(QColor("#4361ee"), max(1.0, side * 0.04)))
+        dot = side * 0.30
+        p.drawEllipse(QRectF(side - dot - side * 0.08, side - dot - side * 0.08, dot, dot))
+        p.end()
+        result.addPixmap(pm)
+    return result
+
+
 class DeviceView(QWidget):
     """The device screen: live frames, element boxes, and the gestures that act or inspect."""
 
@@ -508,6 +595,9 @@ class DeviceView(QWidget):
         self.image, self.tree, self.mode, self.handles, self.secret = None, None, "act", False, False
         self.hover = self.pick = self._down = None
         self.typed, self._flash, self._ring = "", False, False
+        self.loading, self._angle = None, 0         # a spinner and this text over the screen while it connects
+        self._spin = QTimer(self)
+        self._spin.timeout.connect(self._turn)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setMouseTracking(True)
         self.setMinimumSize(280, 400)
@@ -529,6 +619,19 @@ class DeviceView(QWidget):
     # state
     def set_frame(self, image):
         self.image = image
+        self.update()
+
+    def set_loading(self, text):
+        """Shows a turning spinner and `text` over the screen (the last frame stays, dimmed); None hides it."""
+        self.loading = text
+        if text:
+            self._spin.start(16)
+        else:
+            self._spin.stop()
+        self.update()
+
+    def _turn(self):
+        self._angle = (self._angle + 6) % 360
         self.update()
 
     def set_tree(self, tree):
@@ -593,9 +696,14 @@ class DeviceView(QWidget):
         p.fillPath(frame, QColor(self.t["screen"]))
         if self.image:
             p.save(); p.setClipPath(frame); p.drawImage(r, self.image); p.restore()
-        else:
-            p.setPen(QColor("#c9d1d9"))
-            p.drawText(r, Qt.AlignmentFlag.AlignCenter, "Connecting to the device")
+        if self.loading:
+            p.fillPath(frame, QColor(0, 0, 0, 140 if self.image else 0))
+            ring = QRectF(0, 0, 36, 36); ring.moveCenter(r.center() - QPointF(0, 14))
+            p.setPen(QPen(QColor(255, 255, 255, 50), 3)); p.drawEllipse(ring)
+            pen = QPen(QColor("#ffffff"), 3); pen.setCapStyle(Qt.PenCapStyle.RoundCap); p.setPen(pen)
+            p.drawArc(ring, -self._angle * 16, 90 * 16)
+            p.setPen(QColor("#e6edf3"))
+            p.drawText(QRectF(r.left(), ring.bottom() + 12, r.width(), 24), Qt.AlignmentFlag.AlignCenter, self.loading)
         if self.tree and self.handles:
             p.setPen(QPen(QColor(self.t["select"]), 1))
             for e in self.tree["elements"]:
@@ -704,7 +812,8 @@ class DeviceView(QWidget):
             self.update()
 
 
-PICK_HINT = "Nothing selected. In Inspect mode (Ctrl+2), click an element on the screen or pick one in Source."
+PICK_HINT = ("No element selected", "In Inspect mode (Ctrl+2), click an element on the device or pick one above.")
+WAITING = ("Reading the screen", "Elements show here once the device answers.")
 
 
 def fit(table, max_rows=8):
@@ -880,13 +989,18 @@ class InspectorPane(QWidget):
         self.source.header().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         self.source.itemClicked.connect(lambda item: self.picked.emit(item.data(0, Qt.ItemDataRole.UserRole)))
         layout.addWidget(self.source, 1)
+        self.source_empty = EmptyState(self.t, "scan-search", *WAITING)
+        layout.addWidget(self.source_empty, 1)
+        self.source.setVisible(False); self.count.setVisible(False)
         self.split.addWidget(top)
         bottom = QWidget()
         layout = QVBoxLayout(bottom); layout.setContentsMargins(0, 6, 0, 0); layout.setSpacing(8)
         layout.addWidget(plain_label("Selected element", "pane"))
-        self.title = plain_label(PICK_HINT, "title")
+        self.title = plain_label("", "title")
         self.title.setWordWrap(True)
         layout.addWidget(self.title)
+        self.pick_empty = EmptyState(self.t, "mouse-pointer-click", *PICK_HINT)
+        layout.addWidget(self.pick_empty)
         self.locators = QTableWidget(0, 3)
         self.locators.setHorizontalHeaderLabels(["Suggested locator", "Matches", ""])
         self.locators.setItemDelegateForColumn(1, MatchDelegate(self.t, self.locators))
@@ -948,9 +1062,13 @@ class InspectorPane(QWidget):
         self.show_element(None)
 
     def set_tree(self, tree):
-        unchanged = self.tree is not None and tree.get("screen") == self.tree.get("screen")
+        unchanged = self.tree is not None and tree is not None and tree.get("screen") == self.tree.get("screen")
         self.tree = tree
         if unchanged:                     # rebuilding a large tree every poll stalls the UI
+            return
+        if tree is None:                  # no screen read yet (starting, or switching devices)
+            self.source.clear()
+            self._empty_source(*WAITING)
             return
         self.source.setUpdatesEnabled(False)          # one repaint for the whole rebuild
         self.source.blockSignals(True)
@@ -970,11 +1088,21 @@ class InspectorPane(QWidget):
                 add(children, item)
         add(visible_tree(tree.get("screen", [])), None)
         self.count.setText("%d locatable" % shown[0])
+        if shown[0]:
+            self.source_empty.setVisible(False); self.source.setVisible(True); self.count.setVisible(True)
+        else:
+            self._empty_source("Nothing to locate here", "This screen has no text or ids to match. "
+                                                         "Move to another screen on the device.")
         self.source.expandAll()
         self.source.blockSignals(False)
         self.source.setUpdatesEnabled(True)
 
+    def _empty_source(self, title, text):
+        self.source_empty.show_text(title, text)
+        self.source_empty.setVisible(True); self.source.setVisible(False); self.count.setVisible(False)
+
     def retheme(self):
+        self.source_empty.retheme(); self.pick_empty.retheme()
         self.attr_toggle.setIcon(icon("chevron-down" if self.attr_toggle.isChecked() else "chevron-right", self.t["ink2"]))
         for button in self.locators.findChildren(QToolButton):
             button.setIcon(icon("copy", self.t["ink2"]))
@@ -994,12 +1122,11 @@ class InspectorPane(QWidget):
         for widget in (self.locators, self.actions, self.attr_head):
             widget.setVisible(element is not None)
         self._sync()
+        self.title.setVisible(element is not None)
+        self.pick_empty.setVisible(element is None)
         if not element:
-            self.title.setText(PICK_HINT)
-            self.title.setProperty("empty", True); self.title.style().polish(self.title)
             return
         self.title.setText(first_line(element) or "(no text)")
-        self.title.setProperty("empty", False); self.title.style().polish(self.title)
         for locator, count in locator_candidates(element, self.tree["elements"] if self.tree else [element]):
             self._row(self.locators, locator, "unique" if count == 1 else f"{count} matches")
             row = self.locators.rowCount() - 1
@@ -1080,9 +1207,9 @@ class RecorderPane(QWidget):
         self.lines.setToolTip("Delete removes the selected line")
         QShortcut(QKeySequence(Qt.Key.Key_Delete), self.lines, activated=self._remove_selected)
         layout.addWidget(self.lines, 1)
-        self.empty = plain_label("Act on the device: each step becomes a Robot Framework line here.", "empty")
-        self.empty.setWordWrap(True)
-        layout.addWidget(self.empty)
+        self.empty = EmptyState(theme, "circle-dot", "No steps yet",
+                                "Act on the device: each tap, swipe and typed text becomes a Robot Framework line.")
+        layout.addWidget(self.empty, 1)
         foot = QHBoxLayout(); foot.setSpacing(8)
         self.message = plain_label("", "message")
         self.message.setWordWrap(True)
@@ -1109,6 +1236,7 @@ class RecorderPane(QWidget):
         dots.addPixmap(dot_pixmap(self.t["rec"]), QIcon.Mode.Normal, QIcon.State.On)
         dots.addPixmap(dot_pixmap(self.t["warn"], hollow=True), QIcon.Mode.Normal, QIcon.State.Off)
         self.record_button.setIcon(dots)
+        self.empty.retheme()
         if self.message.text():
             self.status.setPixmap(dot_pixmap(self.t[self.kind], 8))
         self.lines.viewport().update()
@@ -1146,11 +1274,12 @@ class RecorderPane(QWidget):
         if pending:
             self.lines.scrollToBottom()
         self.empty.setVisible(not lines and not pending)
+        self.lines.setVisible(not self.empty.isVisibleTo(self))
         if stamp and lines:
-            last = self.lines.item(self.lines.count() - 1)
-            last.setBackground(QColor(self.t["rec_soft"]))
+            row = len(lines) - 1                     # the newest recorded line, above any pending ones
+            self.lines.item(row).setBackground(QColor(self.t["rec_soft"]))
             self.lines.scrollToBottom()
-            QTimer.singleShot(700, lambda: last.setBackground(QBrush()) if self.lines.count() else None)
+            QTimer.singleShot(700, lambda: self.lines.item(row) and self.lines.item(row).setBackground(QBrush()))
 
     def save(self):
         path, _ = QFileDialog.getSaveFileName(self, "Save the recorded test", "recorded.robot", "Robot Framework (*.robot)")
@@ -1224,17 +1353,20 @@ class Pill(QFrame):
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, session, worker, device_name="", platform="android", settings=None, devices=()):
+    def __init__(self, session, worker, device_name="", platform="android", settings=None, devices=(),
+                 live_view=None):
         super().__init__()
         self.session, self.worker, self.platform = session, worker, platform
-        self.device_name, self.next_device = device_name, None
+        self.device_name, self.reader, self.live_device, self.switching = device_name, None, None, False
+        self.live_view = live_view            # (device, platform) -> a started StreamReader, or None
         self.devices = [d if isinstance(d, dict) else {"device_id": d} for d in devices]
         self.live, self.pending, self._icons, self._cards, self.queued = False, 0, [], [], []
         self.settings = settings if settings is not None else QSettings("MaestroLibrary", "Studio")
         mode = self.settings.value("theme", "system")
         self.theme_mode = mode if mode in THEME_MODES else "system"
         self.t = apply_theme(QApplication.instance(), self.theme_mode)
-        self.setWindowTitle(f"MaestroLibrary Studio - {device_name} (keep Robot runs off this device while it is open)")
+        self._title()
+        self.setWindowIcon(app_icon())
         self.device = DeviceView(self.t)
         self.inspector = InspectorPane(self.t)
         self.recorder = RecorderPane(session, self.t)
@@ -1281,8 +1413,9 @@ class MainWindow(QMainWindow):
         worker.done.connect(self._done)
         worker.ended.connect(self._ended)
         worker.image.connect(self.device.set_frame)
+        worker.switched.connect(self._switched)
         self.poll = QTimer(self)
-        self.poll.timeout.connect(lambda: worker.poll.emit() if not self.pending else None)
+        self.poll.timeout.connect(lambda: worker.request_poll() if not self.pending else None)
         self.poll.start(5000)                 # each read waits for the screen to settle (up to 3 s)
         self.recorder.show_lines(session.lines)
         for button in self.findChildren(QAbstractButton):       # a mouse click leaves no focus ring; Tab still does
@@ -1351,6 +1484,14 @@ class MainWindow(QMainWindow):
         self.theme_button.setAutoRaise(True)
         self.theme_button.setAccessibleName("Theme")
         self._theme_look()
+        self.bar = bar
+
+    def showEvent(self, event):
+        # Qt applies the shell's QSS padding to a shown toolbar only on a later style sheet change: without this the
+        # bar opens 49 px high and grows to 73 on the first theme switch (measured; a re-polish does not do it)
+        if not self.bar.styleSheet():
+            self.bar.setStyleSheet(" ")
+        super().showEvent(event)
 
     def _controls(self):
         """Launch, Back, Keyboard, Screenshot and Secret: compact buttons directly under the phone."""
@@ -1367,6 +1508,7 @@ class MainWindow(QMainWindow):
             action.triggered.connect(lambda _=False, k=kind: (self.device.flush_typing(), self.submit(k, {})))
             action.setEnabled(not (kind == "back" and self.platform == "ios"))
             actions.append(action)
+        self.back_action = actions[1]
         self.secret = self._iconed(QAction("Secret", self, checkable=True), "lock")
         self.secret.setToolTip("Typed text is recorded as ${PASSWORD} and never shown")
         self.secret.toggled.connect(lambda on: (setattr(self.device, "secret", on), self.device.update()))
@@ -1428,6 +1570,8 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(4000, lambda: self.recorder.say("") if self.message.text() == text else None)
 
     def _tree(self, tree):
+        if self.switching:
+            return
         self.device.set_tree(tree)
         self.inspector.set_tree(tree)
 
@@ -1486,10 +1630,56 @@ class MainWindow(QMainWindow):
         return menu
 
     def switch_device(self, device):
-        """Closes this window; the caller (studio.main) sees next_device and reopens Studio on that device."""
-        if device != self.device_name and device in [d["device_id"] for d in self.devices]:
-            self.next_device = device
-            self.close()
+        """Moves Studio to another listed device in place: same window, same recorded lines, same Maestro."""
+        if device == self.device_name or device not in [d["device_id"] for d in self.devices]:
+            return
+        self.stop_live()
+        self.live = self.worker.live = False
+        self.device.set_tree(None)                # the last frame stays, dimmed under the spinner
+        self.inspector.set_tree(None)
+        self._set_device(device, "connecting")
+        self.platform = next(d for d in self.devices if d["device_id"] == device).get("platform") or self.platform
+        self.start_live()                     # about 1 to 2 s; it does not wait for Maestro
+        self.switching = True                 # a screen read still under way is the old device's: ignore it
+        self.worker.retarget.emit(device)
+
+    def _set_device(self, device, state):
+        self.device_name = device
+        self.state.setText(f"{device}: {state}")
+        self.state.setToolTip("")
+        self._title()
+        self._dot("ink3")
+
+    def _title(self):
+        self.setWindowTitle(f"MaestroLibrary Studio - {self.device_name} "
+                            "(keep Robot runs off this device while it is open)")
+
+    def _switched(self, device, platform):
+        """The worker now drives `device` (or stayed on the old one after a failed switch): start its view."""
+        self.platform, self.switching = platform, False
+        self.back_action.setEnabled(platform != "ios")
+        if device != self.live_device:        # a failed switch: back to the old device's view
+            self.stop_live()
+            self._set_device(device, "connecting")
+            self.start_live()
+
+    def start_live(self):
+        self.live, self.worker.live, self.live_device = False, False, self.device_name
+        named = next((d for d in self.devices if d["device_id"] == self.device_name), {})
+        self.device.set_loading(f"Connecting to {(named.get('name') or self.device_name).replace('_', ' ')}")
+        self.reader = self.live_view(self.device_name, self.platform) if self.live_view else None
+        if self.reader is None:
+            self.fallback("The live view is Android only (and needs adb); showing screenshots after each step.")
+            return
+        reader = self.reader
+        reader.ready.connect(lambda: self.show_newest(reader) if reader is self.reader else None)
+        reader.failed.connect(lambda reason: self.fallback(reason) if reader is self.reader else None)
+        reader.start()
+
+    def stop_live(self):
+        reader, self.reader = self.reader, None
+        if reader:
+            reader.stop()
 
     def _next_theme(self):
         self.set_theme(THEME_MODES[(THEME_MODES.index(self.theme_mode) + 1) % len(THEME_MODES)])
@@ -1506,12 +1696,14 @@ class MainWindow(QMainWindow):
     def go_live(self, image):
         if not self.live:
             self.live = self.worker.live = True
+            self.device.set_loading(None)
             self._dot("ok")
             self.state.setText(self.state.text().split(":")[0] + ": live")
         self.device.set_frame(image)
 
     def fallback(self, reason):
         self.live = self.worker.live = False
+        self.device.set_loading(None)
         self._dot("warn")
         self.state.setText(self.state.text().split(":")[0] + ": screenshots")
         self.state.setToolTip(html.escape(reason))      # tooltips detect rich text: keep it plain

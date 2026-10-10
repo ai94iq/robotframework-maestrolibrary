@@ -43,6 +43,15 @@ class LocatorTest(unittest.TestCase):
 class FakeLib:
     def __init__(self, elements):
         self._elements, self.ran, self.app_id, self.fail = elements, [], "com.app", None
+        self.device, self.platform, self.device_switches = "SER", "android", []
+
+    def device_id(self):
+        if self.platform is None:              # set to None by a device switch: resolve it again
+            if self.device == "GONE":
+                raise RuntimeError("Device 'GONE' is not connected.")
+            self.device_switches.append(self.device)
+            self.platform = "android"
+        return self.device
 
     def screen(self):
         return self._elements

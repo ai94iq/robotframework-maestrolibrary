@@ -182,59 +182,48 @@ def main(argv=None):
     from .stream import ScrcpyStream
 
     app = QApplication.instance() or QApplication(sys.argv[:1])
-    device, devices, first = args.device, None, True
-    state = {"lines": [], "name": None, "geometry": None}
-    while True:
-        lib = MaestroLibrary(device=device, run_on_failure="Nothing", logcat=False)
-        reader = thread = None
-        try:
-            device = lib.device_id()
-            if devices is None:                      # listed once: it is what the device dropdown offers
-                devices = connected_devices(lib)
-            session = Session(lib, args.app)
-            session.lines = state["lines"]
-            worker = studio_qt.ActionWorker(session)
-            thread = QThread()
-            worker.moveToThread(thread)
-            thread.start()
+    if sys.platform == "win32":      # its own taskbar button and icon, not Python's
+        import ctypes
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("MaestroLibrary.Studio")
+    app.setWindowIcon(studio_qt.app_icon())
+    lib = MaestroLibrary(device=args.device, run_on_failure="Nothing", logcat=False)
+    window = thread = None
+    try:
+        device = lib.device_id()
+        session = Session(lib, args.app)
+        worker = studio_qt.ActionWorker(session)
+        thread = QThread()
+        worker.moveToThread(thread)
+        thread.start()
 
-            def screenshot(lib=lib, device=device):
-                content = lib.mcp.call_tool("take_screenshot", {"device_id": device})
-                data = next(c["data"] for c in content if c.get("type") == "image")
-                return studio_qt.QImage.fromData(base64.b64decode(data))
+        def screenshot():
+            content = lib.mcp.call_tool("take_screenshot", {"device_id": lib.device_id()})
+            data = next(c["data"] for c in content if c.get("type") == "image")
+            return studio_qt.QImage.fromData(base64.b64decode(data))
 
-            window = studio_qt.MainWindow(session, worker, device_name=device, platform=lib.platform, devices=devices)
-            worker.screenshot = screenshot
-            window.resize(1480, 940)
-            if state["geometry"]:
-                window.restoreGeometry(state["geometry"])
-            if state["name"] is not None:
-                window.recorder.name.setText(state["name"])
-            window.show()
-            if lib.platform == "android" and lib.adb():
-                reader = studio_qt.StreamReader(ScrcpyStream(lib.adb(), device, max_size=args.max_size,
-                                                                 video_encoder=args.video_encoder))
-                reader.ready.connect(lambda reader=reader, window=window: window.show_newest(reader))
-                reader.failed.connect(window.fallback)
-                reader.start()
-            else:
-                window.fallback("The live view is Android only (and needs adb); showing screenshots after each step.")
-            if args.app and first:                              # the first device only
-                window.submit("launch", {})
-            worker.poll.emit()
-            code = app.exec()
-            state.update(lines=session.lines, name=window.recorder.name.text(), geometry=window.saveGeometry())
-            first = False
-        finally:
-            if reader:
-                reader.stop()
-            if thread:
-                thread.quit()
-                thread.wait(10000)
-            lib.mcp.close()
-        if not window.next_device:
-            return code
-        device = window.next_device
+        def live_view(device, platform):
+            if platform != "android" or not lib.adb():
+                return None
+            return studio_qt.StreamReader(ScrcpyStream(lib.adb(), device, max_size=args.max_size,
+                                                       video_encoder=args.video_encoder))
+
+        window = studio_qt.MainWindow(session, worker, device_name=device, platform=lib.platform,
+                                      devices=connected_devices(lib), live_view=live_view)
+        worker.screenshot = screenshot
+        window.resize(1480, 940)
+        window.show()
+        window.start_live()
+        if args.app:
+            window.submit("launch", {})
+        worker.request_poll()
+        return app.exec()
+    finally:
+        if window:
+            window.stop_live()
+        if thread:
+            thread.quit()
+            thread.wait(10000)
+        lib.mcp.close()
 
 
 def connected_devices(lib):
@@ -243,7 +232,7 @@ def connected_devices(lib):
     try:
         content = lib.mcp.call_tool("list_devices", {})
         return [{"device_id": str(d["device_id"]), "name": str(d.get("name") or d["device_id"]),
-                 "type": str(d.get("type", ""))} for d in json.loads(content[0]["text"])["devices"] if d.get("connected")]
+                 "type": str(d.get("type", "")), "platform": str(d.get("platform", ""))} for d in json.loads(content[0]["text"])["devices"] if d.get("connected")]
     except (LookupError, TypeError, ValueError):
         return []
 

@@ -308,6 +308,17 @@ class WindowTest(WindowCase):
         from PySide6.QtWidgets import QAbstractItemView
         self.assertEqual(self.window.inspector.locators.selectionMode(), QAbstractItemView.SelectionMode.NoSelection)
 
+    def test_screen_reads_never_pile_up(self):
+        self.worker.poll.disconnect(self.worker._polled)
+        reads = []
+        self.worker.poll.connect(lambda: reads.append(1))
+        for _ in range(5):
+            self.worker.request_poll()
+        self.assertEqual(len(reads), 1)
+        self.worker._polled()
+        self.worker.request_poll()
+        self.assertEqual(len(reads), 2)
+
     def test_undo_clear_and_record_toggle(self):
         self.worker.run("back", {})
         self.worker.run("hide_keyboard", {})
@@ -404,7 +415,7 @@ class ThemeTest(WindowCase):
     def test_one_device_has_no_dropdown(self):
         self.assertFalse(self.window.chevron.isVisibleTo(self.window))
         self.window.switch_device("OTHER")
-        self.assertIsNone(self.window.next_device)
+        self.assertEqual(self.window.device_name, "SER")
 
     def test_several_devices_make_the_pill_a_dropdown(self):
         from MaestroLibrary.studio_qt import MainWindow
@@ -414,13 +425,23 @@ class ThemeTest(WindowCase):
         window.show()
         self.assertTrue(window.chevron.isVisibleTo(window))
         window.switch_device("SER")
-        self.assertIsNone(window.next_device)
         window.switch_device("not-listed")
-        self.assertIsNone(window.next_device)
+        self.assertEqual(self.lib.device_switches, [])
         window.switch_device("A&B")
-        self.assertEqual(window.next_device, "A&B")
+        self.assertTrue(window.isVisible())                       # in place: the window stays
+        self.assertEqual(self.lib.device_switches, ["A&B"])
+        self.assertEqual(window.device_name, "A&B")
+        self.assertIn("A&B", window.windowTitle())
         from MaestroLibrary.studio_qt import device_icon
         self.assertEqual([device_icon(d) for d in window.devices], ["device", "monitor-smartphone"])
+
+    def test_toolbar_keeps_its_height_across_themes(self):
+        self.app.processEvents()
+        height = self.window.bar.height()
+        for mode in ("dark", "light"):
+            self.window.set_theme(mode)
+            self.app.processEvents()
+            self.assertEqual(self.window.bar.height(), height)
 
     def test_invalid_stored_theme_falls_back_to_system(self):
         self.settings.setValue("theme", "neon")
@@ -481,13 +502,14 @@ class MainTest(unittest.TestCase):
         self.assertIn("screenshots", window.state.text())
         self.assertIn("Android only", window.state.toolTip())
 
-    def test_choosing_another_device_reopens_studio_with_the_recording(self):
+    def test_switching_device_keeps_one_window_and_one_maestro(self):
         import json
         from unittest import mock
+        from PySide6.QtCore import QSettings
+        from PySide6.QtWidgets import QApplication
+        from test_studio import FakeLib
         import MaestroLibrary
         from MaestroLibrary import studio, studio_qt
-        from test_studio import FakeLib
-        from PySide6.QtCore import QSettings
         folder = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, folder, True)
         ini = QSettings(os.path.join(folder, "studio.ini"), QSettings.Format.IniFormat)
@@ -495,10 +517,10 @@ class MainTest(unittest.TestCase):
 
         def make_lib(device=None, **kwargs):
             lib = FakeLib(NESTED)
-            lib.device_id, lib.platform, lib.adb, lib.mcp = (lambda: device or "A"), "ios", (lambda: None), mock.Mock()
-            devices = [{"device_id": d, "platform": "ios", "connected": True} for d in ("A", "B")]
+            lib.device, lib.platform, lib.adb, lib.mcp = device or "A", "ios", (lambda: None), mock.Mock()
+            devices = [{"device_id": d, "platform": "ios", "type": "simulator", "connected": True} for d in ("A", "B")]
             lib.mcp.call_tool.return_value = [{"type": "text", "text": json.dumps({"devices": devices})}]
-            made.append((device, lib))
+            made.append(lib)
             return lib
 
         def window(*args, **kwargs):
@@ -506,21 +528,23 @@ class MainTest(unittest.TestCase):
             return windows[-1]
 
         def run():
-            if len(windows) == 1:
-                windows[0].session.lines.append("Go Back")
-                windows[0].recorder.name.setText("My test")
-                windows[0].switch_device("B")
+            windows[0].session.lines.append("Go Back")
+            windows[0].switch_device("B")
+            QApplication.processEvents()
             return 0
-        with mock.patch.object(MaestroLibrary, "MaestroLibrary", side_effect=make_lib),                 mock.patch.object(studio_qt, "MainWindow", side_effect=window),                 mock.patch.object(studio_qt, "QSettings", return_value=ini),                 mock.patch.object(QApplication, "exec", side_effect=run):
+        with mock.patch.object(MaestroLibrary, "MaestroLibrary", side_effect=make_lib), \
+                mock.patch.object(studio_qt, "MainWindow", side_effect=window), \
+                mock.patch.object(studio_qt, "QSettings", return_value=ini), \
+                mock.patch.object(QApplication, "exec", side_effect=run):
             self.assertEqual(studio.main([]), 0)
-        self.assertEqual([d for d, _ in made], [None, "B"])
-        self.assertEqual([d["device_id"] for d in windows[0].devices], ["A", "B"])
-        self.assertEqual(windows[1].session.lines, ["Go Back"])
-        self.assertEqual(windows[1].recorder.name.text(), "My test")
-        for _, lib in made:
-            lib.mcp.close.assert_called_once()
-        for w in windows:
-            w.close()
+        self.assertEqual(len(made), 1)
+        self.assertEqual(len(windows), 1)
+        self.assertEqual(made[0].device, "B")
+        self.assertEqual(windows[0].device_name, "B")
+        self.assertEqual(windows[0].session.lines, ["Go Back"])
+        self.assertEqual([d["type"] for d in windows[0].devices], ["simulator", "simulator"])
+        made[0].mcp.close.assert_called_once()
+        windows[0].close()
 
     def test_missing_extra_says_how_to_install(self):
         from unittest import mock
@@ -531,7 +555,46 @@ class MainTest(unittest.TestCase):
 
 
 @unittest.skipIf(av is None, "needs the studio extra (PySide6, av)")
+def mock_reader():
+    from unittest import mock
+    return mock.Mock()
+
+
 class LiveStateTest(WindowCase):
+    def test_a_failed_switch_stays_on_the_old_device(self):
+        self.window.devices = [{"device_id": "SER"}, {"device_id": "GONE"}]
+        self.window.switch_device("GONE")
+        self.assertEqual(self.lib.device, "SER")
+        self.assertEqual(self.window.device_name, "SER")
+        self.assertIn("Could not switch to GONE", self.window.message.text())
+
+    def test_spinner_shows_until_the_first_frame(self):
+        from PySide6.QtGui import QImage
+        self.window.live_view = lambda device, platform: None
+        self.window.live = True
+        self.window.devices = [{"device_id": "SER"}, {"device_id": "EMU", "name": "Pixel_9", "type": "emulator"}]
+        self.window.stop_live()
+        self.window.device_name = "EMU"
+        self.window.live_view = lambda device, platform: mock_reader()
+        self.window.start_live()
+        self.assertEqual(self.view.loading, "Connecting to Pixel 9")
+        self.view.grab()                                   # paints the spinner without error
+        self.window.go_live(QImage(10, 20, QImage.Format.Format_RGB888))
+        self.assertIsNone(self.view.loading)
+        self.assertFalse(self.view._spin.isActive())
+
+    def test_empty_states(self):
+        inspector = self.window.inspector
+        inspector.set_tree(None)
+        self.assertTrue(inspector.source_empty.isVisibleTo(inspector))
+        self.assertFalse(inspector.count.isVisibleTo(inspector))
+        inspector.set_tree({"screen": [], "elements": [], "width": 1, "height": 1})
+        self.assertIn("Nothing to locate", inspector.source_empty.title.text())
+        self.worker.refresh()
+        self.assertFalse(inspector.source_empty.isVisibleTo(inspector))
+        self.assertTrue(self.window.recorder.empty.isVisibleTo(self.window.recorder))
+        self.assertFalse(self.window.windowIcon().isNull())
+
     def test_live_then_fallback(self):
         from PySide6.QtGui import QImage
         self.window.go_live(QImage(10, 20, QImage.Format.Format_RGB888))
@@ -593,7 +656,10 @@ class LiveStateTest(WindowCase):
     def test_inspector_is_compact_when_nothing_is_selected(self):
         inspector = self.window.inspector
         self.assertFalse(inspector.locators.isVisibleTo(inspector))
-        self.assertIn("Nothing selected", inspector.title.text())
+        self.assertTrue(inspector.pick_empty.isVisibleTo(inspector))
+        self.assertFalse(inspector.title.isVisibleTo(inspector))
+        from PySide6.QtCore import Qt
+        self.assertEqual(inspector.pick_empty.title.textFormat(), Qt.TextFormat.PlainText)
         self.window.inspect_mode.trigger()
         self.assertTrue(self.window.hint.text().startswith("Inspect"))
 
