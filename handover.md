@@ -29,7 +29,7 @@ python -m bandit -q -c pyproject.toml -r src
 
 ## Next
 
-- UI redesign done (Lucide 1.55.0 icons, segmented mode control, contrasted cards with shadows, recorder title and action row, code-style recorder, match pills); waiting for the user's look. Known: long recorder lines scroll instead of wrapping; the device pill reads "SER: live".
+- UI: Lucide 1.55.0 icons, segmented mode control, cards with shadows, a floating device control bar, one title style for both panes, a click-to-cycle theme button (system, light, dark), menus and tooltips drawn as one rounded surface, 150 ms tooltips, and a device dropdown in the pill when several devices are connected (switching reopens Studio on that device and keeps the recorded lines). Waiting for the user's look.
 - Then one device batch: end to end, replay, fallback.
 
 - Device runs at the end: end to end (make the harness read element positions from the window's own tree, not Maestro on the UI thread), replay of the saved test, fallback without scrcpy.

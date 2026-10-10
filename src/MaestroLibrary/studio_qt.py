@@ -1,5 +1,6 @@
 """The Studio window (PySide6): live device screen, inspector and recorder. Needs the `studio` extra."""
 import html
+import math
 import os
 import tempfile
 from collections import Counter
@@ -8,13 +9,13 @@ import threading
 import time
 
 import av
-from PySide6.QtCore import QByteArray, QObject, QPointF, QRectF, QSettings, QSize, Qt, QThread, QTimer, Signal, Slot
+from PySide6.QtCore import QByteArray, QEvent, QObject, QPointF, QRectF, QSettings, QSize, Qt, QThread, QTimer, Signal, Slot
 from PySide6.QtGui import (QAction, QActionGroup, QBrush, QColor, QFontDatabase, QGuiApplication, QIcon, QIconEngine, QImage,
                            QFont, QFontMetrics, QKeySequence, QPainter, QPainterPath, QPalette, QPen, QPixmap, QShortcut)
 from PySide6.QtSvg import QSvgRenderer
-from PySide6.QtWidgets import (QAbstractItemView, QApplication, QFileDialog, QFrame, QGraphicsDropShadowEffect,
+from PySide6.QtWidgets import (QAbstractButton, QAbstractItemView, QApplication, QFileDialog, QFrame, QGraphicsDropShadowEffect,
                                QGridLayout, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QListWidget,
-                               QListWidgetItem, QMainWindow, QMenu, QPushButton, QScrollArea, QSizePolicy, QSplitter, QStyle,
+                               QListWidgetItem, QMainWindow, QMenu, QProxyStyle, QPushButton, QScrollArea, QSizePolicy, QSplitter, QStyle,
                                QStyledItemDelegate, QStyleOptionViewItem, QTableWidget, QTableWidgetItem, QToolBar, QToolButton,
                                QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget, QWidgetAction)
 
@@ -206,11 +207,11 @@ class StreamReader(QThread):
 # Design tokens: one set of names for both themes, so every widget and painter reads the same palette.
 THEMES = {
     "light": {"ground": "#e9ecf1", "panel": "#ffffff", "raised": "#f4f6f9", "hover": "#eceff4", "line": "#d6dae3",
-              "ink": "#0f1216", "ink2": "#5a6372", "ink3": "#757d8c", "accent": "#4361ee", "accent_soft": "#e4e9fd",
+              "ink": "#0f1216", "ink2": "#5a6372", "ink3": "#757d8c", "accent": "#4361ee", "accent_soft": "#e4e9fd", "accent_text": "#3a56d9",
               "accent_ink": "#ffffff", "rec": "#e5484d", "rec_soft": "#fde4e5", "ok": "#15803d", "ok_soft": "#dcf5e5",
               "warn": "#b45309", "warn_soft": "#fdebd0", "select": "#4361ee", "screen": "#0b0d10", "shadow_alpha": 70, "shadow_blur": 28, "shadow_y": 6, "edge": "#d6dae3"},
     "dark": {"ground": "#050608", "panel": "#181c24", "raised": "#20252f", "hover": "#2a303c", "line": "#303746",
-             "ink": "#f5f7fa", "ink2": "#a3acba", "ink3": "#7d8696", "accent": "#7b93ff", "accent_soft": "#252d4d",
+             "ink": "#f5f7fa", "ink2": "#a3acba", "ink3": "#7d8696", "accent": "#7b93ff", "accent_soft": "#252d4d", "accent_text": "#7b93ff",
              "accent_ink": "#0d0f13", "rec": "#ff6369", "rec_soft": "#3a1d20", "ok": "#3ecf8e", "ok_soft": "#16342a",
              "warn": "#f5b14c", "warn_soft": "#3b2d14", "select": "#7b93ff", "screen": "#000000", "shadow_alpha": 230, "shadow_blur": 44, "shadow_y": 12, "edge": "#3d4555"},
 }
@@ -238,6 +239,7 @@ QToolBar#shell QToolButton:checked, QFrame#controls QToolButton:checked {{ backg
 QToolBar#shell QToolButton:disabled, QFrame#controls QToolButton:disabled {{ color: {ink3}; }}
 QToolBar#shell QToolButton:focus, QFrame#controls QToolButton:focus {{ border-color: {accent}; }}
 QFrame#controls QToolButton {{ padding: 4px 6px; font-size: 12px; }}
+QFrame#controls {{ background: {panel}; border: 1px solid {line}; border-top-color: {edge}; border-radius: 12px; }}
 QToolButton#tool, QToolButton#disclosure {{ background: transparent; border: 1px solid transparent; border-radius: 6px;
     padding: 4px; color: {ink2}; }}
 QToolButton#disclosure {{ padding: 4px 6px; font-size: 12px; font-weight: 600; }}
@@ -255,13 +257,17 @@ QToolBar#shell QFrame#seg QToolButton:hover {{ background: {hover}; }}
 QToolBar#shell QFrame#seg QToolButton:checked {{ background: {accent}; color: {accent_ink}; }}
 QFrame#pill {{ background: {raised}; border: 1px solid {line}; border-radius: 14px; }}
 QFrame#pill QLabel {{ background: transparent; }}
+QFrame#pill[menu="true"]:hover {{ background: {hover}; }}
 QLabel#product {{ font-size: 17px; font-weight: 700; padding-right: 8px; }}
 QLabel#state {{ color: {ink}; }}
 QLabel#pane {{ font-size: 12px; font-weight: 500; color: {ink2}; }}
 QLabel#hint, QLabel#hover, QLabel#message {{ color: {ink2}; font-size: 12px; }}
 QLabel#title {{ font-size: 17px; font-weight: 700; color: {ink}; }}
 QLabel#title[empty="true"] {{ font-size: 13px; font-weight: 400; color: {ink2}; }}
-QLabel#chip {{ background: {raised}; color: {ink2}; font-size: 11px; border-radius: 999px; padding: 2px 8px; }}
+QLabel#chip {{ background: {accent_soft}; color: {accent_text}; font-size: 11px; font-weight: 600; border-radius: 9px;
+    padding: 2px 8px; }}
+QLabel#heading, QLineEdit#testname {{ font-size: 17px; font-weight: 700; color: {ink}; padding: 6px 8px;
+    border: 1px solid transparent; min-height: 22px; }}
 QWidget#actions QPushButton {{ min-height: 30px; padding: 0 12px; }}
 QWidget#actions QPushButton::menu-indicator {{ image: url({chevron_down}); width: 12px; height: 12px;
     subcontrol-origin: padding; subcontrol-position: right center; right: 8px; }}
@@ -282,8 +288,7 @@ QPushButton#primary:hover {{ background: {select}; }}
 QLineEdit {{ background: {raised}; border: 1px solid {line}; border-radius: 8px; padding: 6px 10px;
     selection-background-color: {accent_soft}; selection-color: {ink}; }}
 QLineEdit:focus {{ border-color: {accent}; background: {panel}; }}
-QLineEdit#testname {{ background: transparent; border: 1px solid transparent; font-size: 17px; font-weight: 700;
-    padding: 6px 8px; }}
+QLineEdit#testname {{ background: transparent; }}
 QLineEdit#testname:hover {{ border-color: {line}; }}
 QLineEdit#testname:focus {{ border-color: {accent}; background: {raised}; }}
 QTableWidget, QTreeWidget, QListWidget {{ background: transparent; border: 0; outline: 0; gridline-color: transparent; }}
@@ -324,10 +329,39 @@ QToolTip {{ background: {raised}; color: {ink}; border: 1px solid {line}; border
 """
 
 
+TIP_DELAY = 150            # ms before a tooltip shows (Qt's default is 700)
+
+
+class StudioStyle(QProxyStyle):
+    """Fusion with quick tooltips."""
+
+    def styleHint(self, hint, option=None, widget=None, returnData=None):
+        if hint == QStyle.StyleHint.SH_ToolTip_WakeUpDelay:
+            return TIP_DELAY
+        return super().styleHint(hint, option, widget, returnData)
+
+
+class SurfaceFilter(QObject):
+    """Menus and tooltips are native popup windows: make them frameless and see-through before they show, so only
+    the stylesheet's rounded surface is drawn and not a square window behind it."""
+
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.Type.Polish and isinstance(obj, QWidget) and (
+                isinstance(obj, QMenu) or obj.metaObject().className() == "QTipLabel"):
+            if not obj.testAttribute(Qt.WidgetAttribute.WA_TranslucentBackground):
+                obj.setWindowFlags(obj.windowFlags() | Qt.WindowType.FramelessWindowHint
+                                   | Qt.WindowType.NoDropShadowWindowHint)
+                obj.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        return False
+
+
 def apply_theme(app, mode="system"):
     """Fusion (the same on Windows, Linux and macOS) themed from the tokens; mode is system, light or dark."""
     t = dict(THEMES[theme_name(app, mode)])
-    app.setStyle("Fusion")
+    if not hasattr(app, "studio_style"):               # set once; the objects must outlive every call
+        app.studio_style, app.studio_filter = StudioStyle("Fusion"), SurfaceFilter(app)
+        app.setStyle(app.studio_style)
+        app.installEventFilter(app.studio_filter)
     p = QPalette()
     for role, key in ((QPalette.ColorRole.Window, "ground"), (QPalette.ColorRole.Base, "panel"),
                       (QPalette.ColorRole.AlternateBase, "raised"), (QPalette.ColorRole.Button, "raised"),
@@ -343,7 +377,7 @@ def apply_theme(app, mode="system"):
 
 ICON_SIZE = QSize(16, 16)              # square icons only; the icon-text gap is the stylesheet's padding
 ICON_NAMES = {"act": "mouse-pointer-click", "inspect": "scan-search", "grid": "scan", "launch": "play",
-              "back": "arrow-left", "keyboard": "keyboard", "camera": "camera", "lock": "lock", "theme": "sun-moon",
+              "back": "arrow-left", "keyboard": "keyboard", "camera": "camera", "lock": "lock",
               "record": "circle-dot", "undo": "undo-2", "clear": "trash-2", "copy": "copy", "save": "save",
               "device": "smartphone", "chevron-right": "chevron-right", "chevron-down": "chevron-down"}
 
@@ -412,19 +446,26 @@ def chevrons(color):
     return paths
 
 
-def dot_pixmap(color, size=10, hollow=False):
-    """A filled (or hollow) status dot, antialiased at the screen's pixel ratio."""
-    screen = QGuiApplication.primaryScreen()
-    ratio = max(2.0, screen.devicePixelRatio() if screen else 2.0)
-    pm = QPixmap(round(size * ratio), round(size * ratio))
+DOT_MARGIN = 1             # px of clear space around a dot, so its antialiased edge is never cut
+
+
+def dot_pixmap(color, size=10, hollow=False, ratio=None):
+    """A filled (or hollow) status dot of `size` px plus DOT_MARGIN all round, drawn at the device pixel ratio."""
+    if ratio is None:
+        screen = QGuiApplication.primaryScreen()
+        ratio = screen.devicePixelRatio() if screen else 1.0
+    side = math.ceil((size + 2 * DOT_MARGIN) * ratio)
+    pm = QPixmap(side, side)
     pm.fill(Qt.GlobalColor.transparent)
     p = QPainter(pm)
     p.setRenderHint(QPainter.RenderHint.Antialiasing)
     box = QRectF(0, 0, size * ratio, size * ratio)
+    box.moveCenter(QPointF(side / 2, side / 2))
     if hollow:
-        p.setPen(QPen(QColor(color), 1.5 * ratio))
+        pen = 1.5 * ratio
+        p.setPen(QPen(QColor(color), pen))
         p.setBrush(Qt.BrushStyle.NoBrush)
-        box = box.adjusted(ratio, ratio, -ratio, -ratio)
+        box = box.adjusted(pen / 2, pen / 2, -pen / 2, -pen / 2)
     else:
         p.setPen(Qt.PenStyle.NoPen)
         p.setBrush(QColor(color))
@@ -432,6 +473,7 @@ def dot_pixmap(color, size=10, hollow=False):
     p.end()
     pm.setDevicePixelRatio(ratio)
     return pm
+
 
 
 def plain_label(text="", name=""):
@@ -813,11 +855,11 @@ class InspectorPane(QWidget):
         top = QWidget()
         layout = QVBoxLayout(top); layout.setContentsMargins(0, 0, 0, 6); layout.setSpacing(8)
         head_row = QHBoxLayout(); head_row.setSpacing(8)
-        self.source_label = plain_label("Elements", "pane")
+        self.source_label = plain_label("Elements", "heading")
         self.count = plain_label("0 locatable", "chip")
         for w in (self.source_label, self.count):
             w.setToolTip("System UI and containers without text or id are left out")
-        head_row.addWidget(self.source_label); head_row.addWidget(self.count); head_row.addStretch()
+        head_row.addWidget(self.source_label); head_row.addWidget(self.count, 0, Qt.AlignmentFlag.AlignVCenter); head_row.addStretch()
         layout.addLayout(head_row)
         self.source = QTreeWidget()
         self.source.setFrameShape(QFrame.Shape.NoFrame)
@@ -852,7 +894,7 @@ class InspectorPane(QWidget):
             table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
             table.setWordWrap(True)
         self.locators.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
-        self.locators.setColumnWidth(2, 36)
+        self.locators.setColumnWidth(2, 44)
         self.attributes.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.locators.cellDoubleClicked.connect(lambda r, c: self._copy(r))
         layout.addWidget(self.locators)
@@ -953,11 +995,12 @@ class InspectorPane(QWidget):
             row = self.locators.rowCount() - 1
             button = QToolButton()
             button.setObjectName("copy")
+            button.setFocusPolicy(Qt.FocusPolicy.TabFocus)
             button.setFixedSize(28, 28)
             button.setIconSize(ICON_SIZE)
             button.setToolTip("Copy locator")
             button.clicked.connect(lambda _=False, r=row: self._copy(r))
-            cell = QWidget(); box = QHBoxLayout(cell); box.setContentsMargins(0, 0, 0, 0)
+            cell = QWidget(); box = QHBoxLayout(cell); box.setContentsMargins(0, 0, 8, 0)
             box.addWidget(button, 0, Qt.AlignmentFlag.AlignCenter)
             self.locators.setCellWidget(row, 2, cell)
         for key, value in element.items():
@@ -1033,7 +1076,7 @@ class RecorderPane(QWidget):
         foot = QHBoxLayout(); foot.setSpacing(8)
         self.message = plain_label("", "message")
         self.message.setWordWrap(True)
-        self.status = plain_label("", "status"); self.status.setFixedSize(8, 8); self.status.setVisible(False)
+        self.status = plain_label("", "status"); self.status.setVisible(False)
         foot.addWidget(self.status, 0, Qt.AlignmentFlag.AlignVCenter)
         foot.addWidget(self.message, 1)
         self.copy_button = QPushButton(GAP_SPACE + "Copy")
@@ -1118,10 +1161,12 @@ def card(widget, theme):
     layout = QVBoxLayout(frame)
     layout.setContentsMargins(6, 6, 6, 6)
     layout.addWidget(widget)
-    effect = QGraphicsDropShadowEffect(frame)
-    effect.setBlurRadius(28)
-    effect.setOffset(0, 6)
-    frame.setGraphicsEffect(effect)
+    frame.setGraphicsEffect(QGraphicsDropShadowEffect(frame))
+    return floating(frame, theme)
+
+
+def floating(frame, theme):
+    """Holds a frame that has a drop shadow (see card) in a transparent widget with room for that shadow."""
     shade(frame, theme)
     # A shadow is drawn outside the frame, and whatever holds the frame clips it: hold the frame in a
     # transparent widget with room for the deepest shadow (dark: blur 44, 12 px down).
@@ -1140,10 +1185,26 @@ def shade(frame, theme):
     effect.setOffset(0, theme["shadow_y"])
 
 
+THEME_ICONS = {"system": "monitor", "light": "sun", "dark": "moon"}
+THEME_TIPS = {"system": "Theme: System (click to change)", "light": "Theme: Light (click to change)",
+              "dark": "Theme: Dark (click to change)"}
+
+
+class Pill(QFrame):
+    """The device pill; with several devices a click on it opens the device list."""
+
+    clicked = Signal()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton and self.property("menu"):
+            self.clicked.emit()
+
+
 class MainWindow(QMainWindow):
-    def __init__(self, session, worker, device_name="", platform="android", settings=None):
+    def __init__(self, session, worker, device_name="", platform="android", settings=None, devices=()):
         super().__init__()
         self.session, self.worker, self.platform = session, worker, platform
+        self.device_name, self.devices, self.next_device = device_name, list(devices), None
         self.live, self.pending, self._icons, self._cards = False, 0, [], []
         self.settings = settings if settings is not None else QSettings("MaestroLibrary", "Studio")
         mode = self.settings.value("theme", "system")
@@ -1160,6 +1221,7 @@ class MainWindow(QMainWindow):
         column = QVBoxLayout(device_pane); column.setContentsMargins(0, 0, 0, 0); column.setSpacing(8)
         column.addWidget(self.device, 1)
         controls = self._controls()
+        self._cards = [controls]
         column.addWidget(controls, 0, Qt.AlignmentFlag.AlignHCenter)
         self.hint = plain_label(ACT_HINT, "hint")
         for label in (self.hint, self.hover):          # one line each, centred under the phone
@@ -1170,8 +1232,8 @@ class MainWindow(QMainWindow):
         device_pane.setMinimumWidth(width)
         split = QSplitter()
         split.setHandleWidth(4)                  # the cards' shadow room already spaces them
-        self._cards = [card(self.inspector, self.t), card(self.recorder, self.t)]
-        for widget, stretch in ((device_pane, 0), (self._cards[0], 3), (self._cards[1], 3)):
+        self._cards += [card(self.inspector, self.t), card(self.recorder, self.t)]
+        for widget, stretch in ((device_pane, 0), (self._cards[1], 3), (self._cards[2], 3)):
             split.addWidget(widget)
             split.setStretchFactor(split.count() - 1, stretch)
         split.setSizes([width, 470, 470])                  # the device column hugs the phone; the cards share the rest
@@ -1198,6 +1260,8 @@ class MainWindow(QMainWindow):
         self.poll.timeout.connect(lambda: worker.poll.emit() if not self.pending else None)
         self.poll.start(5000)                 # each read waits for the screen to settle (up to 3 s)
         self.recorder.show_lines(session.lines)
+        for button in self.findChildren(QAbstractButton):       # a mouse click leaves no focus ring; Tab still does
+            button.setFocusPolicy(Qt.FocusPolicy.TabFocus)
         self.device.setFocus()                # typing goes to the phone; no toolbar button starts focused
         for keys, slot in (("Ctrl+1", self.act_mode.trigger), ("Ctrl+2", self.inspect_mode.trigger),
                            ("Ctrl+Z", lambda: worker.edit.emit("undo")), ("Ctrl+S", self.recorder.save)):
@@ -1211,13 +1275,20 @@ class MainWindow(QMainWindow):
         gap = lambda: bar.addWidget(self._gap())
         bar.addWidget(plain_label("MaestroLibrary Studio", "product"))
         gap()
-        pill = QFrame(); pill.setObjectName("pill")
+        pill = Pill(); pill.setObjectName("pill")
         row = QHBoxLayout(pill); row.setContentsMargins(10, 4, 12, 4); row.setSpacing(6)
         self.device_icon = plain_label("", "device_icon")
         self.dot = plain_label("", "dot")
         self.state = plain_label(f"{device_name}: connecting", "state")
-        for widget in (self.device_icon, self.dot, self.state):
+        self.chevron = plain_label("", "chevron")
+        for widget in (self.device_icon, self.dot, self.state, self.chevron):
             row.addWidget(widget)
+        self.chevron.setVisible(len(self.devices) > 1)
+        if len(self.devices) > 1:                    # one device: a plain label; several: a dropdown of them
+            pill.setProperty("menu", True)
+            pill.setCursor(Qt.CursorShape.PointingHandCursor)
+            pill.setToolTip("Switch device")
+            pill.clicked.connect(lambda: self._device_menu(pill))
         bar.addWidget(pill)
         gap()
         self._dot("ink3")
@@ -1244,27 +1315,20 @@ class MainWindow(QMainWindow):
         spacer = self._gap(16); spacer.setMaximumWidth(16777215)
         spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         bar.addWidget(spacer)
-        themes = QMenu("Theme", self)
-        group = QActionGroup(self); group.setExclusive(True)
-        self.theme_actions = {}
-        for mode in THEME_MODES:
-            action = themes.addAction(mode.capitalize())
-            action.setCheckable(True); action.setChecked(mode == self.theme_mode)
-            action.triggered.connect(lambda _=False, m=mode: self.set_theme(m))
-            group.addAction(action)
-            self.theme_actions[mode] = action
-        theme = self._iconed(QAction("Theme", self), "theme")
-        theme.setToolTip("Theme: follow the system, or always light or dark")
-        theme.setMenu(themes)
-        bar.addAction(theme)
-        self.theme_button = bar.widgetForAction(theme)           # a toolbar button like the others
-        self.theme_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.theme_action = QAction("Theme", self)
+        self.theme_action.triggered.connect(self._next_theme)
+        bar.addAction(self.theme_action)
+        self.theme_button = bar.widgetForAction(self.theme_action)           # an icon-only toolbar button
+        self.theme_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         self.theme_button.setAutoRaise(True)
+        self.theme_button.setAccessibleName("Theme")
+        self._theme_look()
 
     def _controls(self):
         """Launch, Back, Keyboard, Screenshot and Secret: compact buttons directly under the phone."""
         box = QFrame(); box.setObjectName("controls")
-        row = QHBoxLayout(box); row.setContentsMargins(0, 0, 0, 0); row.setSpacing(8)
+        box.setGraphicsEffect(QGraphicsDropShadowEffect(box))
+        row = QHBoxLayout(box); row.setContentsMargins(8, 6, 8, 6); row.setSpacing(4)
         actions = []
         for kind, name, text, tip in (("launch", "launch", "Launch", "Open Application (restarts the app)"),
                                       ("back", "back", "Back", "Go Back (Android)"),
@@ -1284,7 +1348,7 @@ class MainWindow(QMainWindow):
             button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon); button.setIconSize(ICON_SIZE)
             button.setAutoRaise(True)
             row.addWidget(button)
-        return box
+        return floating(box, self.t)
 
     @staticmethod
     def _gap(width=8):
@@ -1343,7 +1407,7 @@ class MainWindow(QMainWindow):
             target.setIcon(icon(name, self.t[key], self.t[on]))
         for holder in self._cards:
             shade(holder.frame, self.t)
-        self.theme_actions[mode].setChecked(True)
+        self._theme_look()
         self.recorder.retheme()
         self.inspector.retheme()
         self.recorder.show_lines(self.session.lines)
@@ -1351,8 +1415,33 @@ class MainWindow(QMainWindow):
         self.device.update()
 
     def _dot(self, key):
-        self.dot.setPixmap(dot_pixmap(self.t[key]))
-        self.device_icon.setPixmap(icon("device", self.t["ink"]).pixmap(ICON_SIZE, self.devicePixelRatioF()))
+        ratio = self.devicePixelRatioF()
+        self.dot.setPixmap(dot_pixmap(self.t[key], ratio=ratio))
+        self.device_icon.setPixmap(icon("device", self.t["ink"]).pixmap(ICON_SIZE, ratio))
+        self.chevron.setPixmap(icon("chevron-down", self.t["ink2"]).pixmap(ICON_SIZE, ratio))
+
+    def _device_menu(self, pill):
+        menu = QMenu(self)
+        group = QActionGroup(menu)
+        for device in self.devices:
+            action = menu.addAction(device.replace("&", "&&"))       # a device id is text, not a mnemonic
+            action.setCheckable(True); action.setChecked(device == self.device_name)
+            action.triggered.connect(lambda _=False, d=device: self.switch_device(d))
+            group.addAction(action)
+        menu.exec(pill.mapToGlobal(pill.rect().bottomLeft()))
+
+    def switch_device(self, device):
+        """Closes this window; the caller (studio.main) sees next_device and reopens Studio on that device."""
+        if device != self.device_name and device in self.devices:
+            self.next_device = device
+            self.close()
+
+    def _next_theme(self):
+        self.set_theme(THEME_MODES[(THEME_MODES.index(self.theme_mode) + 1) % len(THEME_MODES)])
+
+    def _theme_look(self):
+        self.theme_action.setIcon(icon(THEME_ICONS[self.theme_mode], self.t["ink"]))
+        self.theme_action.setToolTip(THEME_TIPS[self.theme_mode])
 
     def show_newest(self, reader):
         image, _ = reader.take()

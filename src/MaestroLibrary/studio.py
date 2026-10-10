@@ -7,6 +7,7 @@ Do not run it while a Robot run uses the same device: Maestro allows one session
 """
 import argparse
 import base64
+import json
 import sys
 import threading
 
@@ -165,44 +166,68 @@ def main(argv=None):
     from .stream import ScrcpyStream
 
     app = QApplication.instance() or QApplication(sys.argv[:1])
-    lib = MaestroLibrary(device=args.device, run_on_failure="Nothing", logcat=False)
-    reader = thread = None
+    device, devices, first = args.device, None, True
+    state = {"lines": [], "name": None, "geometry": None}
+    while True:
+        lib = MaestroLibrary(device=device, run_on_failure="Nothing", logcat=False)
+        reader = thread = None
+        try:
+            device = lib.device_id()
+            if devices is None:                      # listed once: it is what the device dropdown offers
+                devices = connected_devices(lib)
+            session = Session(lib, args.app)
+            session.lines = state["lines"]
+            worker = studio_qt.ActionWorker(session)
+            thread = QThread()
+            worker.moveToThread(thread)
+            thread.start()
+
+            def screenshot(lib=lib, device=device):
+                content = lib.mcp.call_tool("take_screenshot", {"device_id": device})
+                data = next(c["data"] for c in content if c.get("type") == "image")
+                return studio_qt.QImage.fromData(base64.b64decode(data))
+
+            window = studio_qt.MainWindow(session, worker, device_name=device, platform=lib.platform, devices=devices)
+            worker.screenshot = screenshot
+            window.resize(1480, 940)
+            if state["geometry"]:
+                window.restoreGeometry(state["geometry"])
+            if state["name"] is not None:
+                window.recorder.name.setText(state["name"])
+            window.show()
+            if lib.platform == "android" and lib.adb():
+                reader = studio_qt.StreamReader(ScrcpyStream(lib.adb(), device, max_size=args.max_size,
+                                                                 video_encoder=args.video_encoder))
+                reader.ready.connect(lambda reader=reader, window=window: window.show_newest(reader))
+                reader.failed.connect(window.fallback)
+                reader.start()
+            else:
+                window.fallback("The live view is Android only (and needs adb); showing screenshots after each step.")
+            if args.app and first:                              # the first device only
+                window.submit("launch", {})
+            worker.poll.emit()
+            code = app.exec()
+            state.update(lines=session.lines, name=window.recorder.name.text(), geometry=window.saveGeometry())
+            first = False
+        finally:
+            if reader:
+                reader.stop()
+            if thread:
+                thread.quit()
+                thread.wait(10000)
+            lib.mcp.close()
+        if not window.next_device:
+            return code
+        device = window.next_device
+
+
+def connected_devices(lib):
+    """The ids of the connected devices (for the device dropdown); empty when Maestro's list cannot be read."""
     try:
-        device = lib.device_id()
-        session = Session(lib, args.app)
-        worker = studio_qt.ActionWorker(session)
-        thread = QThread()
-        worker.moveToThread(thread)
-        thread.start()
-
-        def screenshot():
-            content = lib.mcp.call_tool("take_screenshot", {"device_id": device})
-            data = next(c["data"] for c in content if c.get("type") == "image")
-            return studio_qt.QImage.fromData(base64.b64decode(data))
-
-        window = studio_qt.MainWindow(session, worker, device_name=device, platform=lib.platform)
-        worker.screenshot = screenshot
-        window.resize(1480, 940)
-        window.show()
-        if lib.platform == "android" and lib.adb():
-            reader = studio_qt.StreamReader(ScrcpyStream(lib.adb(), device, max_size=args.max_size,
-                                                             video_encoder=args.video_encoder))
-            reader.ready.connect(lambda: window.show_newest(reader))
-            reader.failed.connect(window.fallback)
-            reader.start()
-        else:
-            window.fallback("The live view is Android only (and needs adb); showing screenshots after each step.")
-        if args.app:
-            window.submit("launch", {})
-        worker.poll.emit()
-        return app.exec()
-    finally:
-        if reader:
-            reader.stop()
-        if thread:
-            thread.quit()
-            thread.wait(10000)
-        lib.mcp.close()
+        content = lib.mcp.call_tool("list_devices", {})
+        return [d["device_id"] for d in json.loads(content[0]["text"])["devices"] if d.get("connected")]
+    except (LookupError, TypeError, ValueError):
+        return []
 
 
 if __name__ == "__main__":

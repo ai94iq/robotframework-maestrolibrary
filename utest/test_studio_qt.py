@@ -326,21 +326,72 @@ class ThemeTest(WindowCase):
         off, on = self.images(self.window.inspect_mode.icon())
         self.assertNotEqual(off, on)
 
-    def test_set_theme_updates_shared_tokens_settings_and_menu(self):
+    def test_theme_button_cycles_and_persists(self):
         from MaestroLibrary.studio_qt import THEMES
         window = self.window
-        window.set_theme("dark")
-        self.assertEqual(window.t["ground"], THEMES["dark"]["ground"])
-        self.assertIs(window.device.t, window.t)
-        self.assertIs(window.recorder.t, window.t)
-        self.assertEqual(self.settings.value("theme"), "dark")
-        self.assertTrue(window.theme_actions["dark"].isChecked())
-        window.set_theme("light")
+        self.assertEqual(window.theme_mode, "system")
+        self.assertEqual(window.theme_action.toolTip(), "Theme: System (click to change)")
+        window.theme_action.trigger()
+        self.assertEqual((window.theme_mode, self.settings.value("theme")), ("light", "light"))
         self.assertEqual(window.t["ground"], THEMES["light"]["ground"])
-        self.assertEqual(self.settings.value("theme"), "light")
-        self.assertTrue(window.theme_actions["light"].isChecked())
-        self.assertFalse(window.theme_actions["dark"].isChecked())
+        self.assertIs(window.device.t, window.t)
+        self.assertEqual(window.theme_action.toolTip(), "Theme: Light (click to change)")
+        window.theme_action.trigger()
+        self.assertEqual((window.theme_mode, self.settings.value("theme")), ("dark", "dark"))
+        self.assertEqual(window.t["ground"], THEMES["dark"]["ground"])
+        window.theme_action.trigger()
+        self.assertEqual(window.theme_mode, "system")
+        window.theme_action.trigger()
         self.assertEqual(self.new_window().theme_mode, "light")
+
+    def test_chip_text_has_4_5_contrast_in_both_themes(self):
+        from MaestroLibrary.studio_qt import THEMES
+
+        def lum(h):
+            c = [int(h[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+            c = [x / 12.92 if x <= 0.03928 else ((x + 0.055) / 1.055) ** 2.4 for x in c]
+            return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
+        for t in THEMES.values():
+            hi, lo = sorted((lum(t["accent_text"]), lum(t["accent_soft"])), reverse=True)
+            self.assertGreaterEqual((hi + 0.05) / (lo + 0.05), 4.5)
+
+    def test_both_pane_titles_share_one_height(self):
+        self.assertEqual(self.window.inspector.source_label.height(), self.window.recorder.name.height())
+
+    def test_menus_and_tooltips_are_see_through(self):
+        from PySide6.QtCore import QPoint, Qt
+        from PySide6.QtWidgets import QMenu, QStyle, QToolTip
+        menu = QMenu()
+        menu.ensurePolished()
+        self.assertTrue(menu.testAttribute(Qt.WidgetAttribute.WA_TranslucentBackground))
+        self.assertTrue(menu.windowFlags() & Qt.WindowType.FramelessWindowHint)
+        QToolTip.showText(QPoint(50, 50), "tip")
+        tips = [w for w in self.app.topLevelWidgets() if w.metaObject().className() == "QTipLabel"]
+        self.assertTrue(tips and all(w.testAttribute(Qt.WidgetAttribute.WA_TranslucentBackground) for w in tips))
+        self.assertEqual(self.app.style().styleHint(QStyle.StyleHint.SH_ToolTip_WakeUpDelay), 150)
+
+    def test_buttons_take_focus_by_keyboard_only(self):
+        from PySide6.QtCore import Qt
+        self.assertEqual(self.window.recorder.record_button.focusPolicy(), Qt.FocusPolicy.TabFocus)
+        self.assertEqual(self.window.theme_button.focusPolicy(), Qt.FocusPolicy.TabFocus)
+
+    def test_one_device_has_no_dropdown(self):
+        self.assertFalse(self.window.chevron.isVisibleTo(self.window))
+        self.window.switch_device("OTHER")
+        self.assertIsNone(self.window.next_device)
+
+    def test_several_devices_make_the_pill_a_dropdown(self):
+        from MaestroLibrary.studio_qt import MainWindow
+        window = MainWindow(self.session, self.worker, device_name="SER", settings=self.settings, devices=["SER", "A&B"])
+        self.addCleanup(window.close)
+        window.show()
+        self.assertTrue(window.chevron.isVisibleTo(window))
+        window.switch_device("SER")
+        self.assertIsNone(window.next_device)
+        window.switch_device("not-listed")
+        self.assertIsNone(window.next_device)
+        window.switch_device("A&B")
+        self.assertEqual(window.next_device, "A&B")
 
     def test_invalid_stored_theme_falls_back_to_system(self):
         self.settings.setValue("theme", "neon")
@@ -400,6 +451,47 @@ class MainTest(unittest.TestCase):
         make_reader.assert_not_called()
         self.assertIn("screenshots", window.state.text())
         self.assertIn("Android only", window.state.toolTip())
+
+    def test_choosing_another_device_reopens_studio_with_the_recording(self):
+        import json
+        from unittest import mock
+        import MaestroLibrary
+        from MaestroLibrary import studio, studio_qt
+        from test_studio import FakeLib
+        from PySide6.QtCore import QSettings
+        folder = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, folder, True)
+        ini = QSettings(os.path.join(folder, "studio.ini"), QSettings.Format.IniFormat)
+        made, windows, real_window = [], [], studio_qt.MainWindow
+
+        def make_lib(device=None, **kwargs):
+            lib = FakeLib(NESTED)
+            lib.device_id, lib.platform, lib.adb, lib.mcp = (lambda: device or "A"), "ios", (lambda: None), mock.Mock()
+            devices = [{"device_id": d, "platform": "ios", "connected": True} for d in ("A", "B")]
+            lib.mcp.call_tool.return_value = [{"type": "text", "text": json.dumps({"devices": devices})}]
+            made.append((device, lib))
+            return lib
+
+        def window(*args, **kwargs):
+            windows.append(real_window(*args, **kwargs))
+            return windows[-1]
+
+        def run():
+            if len(windows) == 1:
+                windows[0].session.lines.append("Go Back")
+                windows[0].recorder.name.setText("My test")
+                windows[0].switch_device("B")
+            return 0
+        with mock.patch.object(MaestroLibrary, "MaestroLibrary", side_effect=make_lib),                 mock.patch.object(studio_qt, "MainWindow", side_effect=window),                 mock.patch.object(studio_qt, "QSettings", return_value=ini),                 mock.patch.object(QApplication, "exec", side_effect=run):
+            self.assertEqual(studio.main([]), 0)
+        self.assertEqual([d for d, _ in made], [None, "B"])
+        self.assertEqual(windows[0].devices, ["A", "B"])
+        self.assertEqual(windows[1].session.lines, ["Go Back"])
+        self.assertEqual(windows[1].recorder.name.text(), "My test")
+        for _, lib in made:
+            lib.mcp.close.assert_called_once()
+        for w in windows:
+            w.close()
 
     def test_missing_extra_says_how_to_install(self):
         from unittest import mock
