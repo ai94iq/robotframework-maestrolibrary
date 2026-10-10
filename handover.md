@@ -29,6 +29,9 @@ python -m bandit -q -c pyproject.toml -r src
 
 ## Next
 
+- UI redesign from the user review (2026-10-10), to be written by a Sonnet subagent and reviewed before commit; the spec was drafted and the run stopped at the usage limit with no changes. Points: icons not aligned with text and dated (use Lucide outline SVGs, vendored, ISC); buttons touching (8 px gaps, Act/Inspect pill segmented control); cards rounded at the bottom too; stronger panel contrast and real shadows; test name as an editable title at the top of the recorder with right-aligned Copy and Save; code-editor style recorder (line gutter, syntax colours); device pill. References: Maestro Studio and Google Artemis screenshots.
+- Then one device batch: end to end, replay, fallback.
+
 - Device runs at the end: end to end (make the harness read element positions from the window's own tree, not Maestro on the UI thread), replay of the saved test, fallback without scrcpy.
 - Check the first CI run on ubuntu, windows and macos (the ubuntu Qt packages are a best guess).
 - Release 0.6.0 when the user says so; then raise the skill floors and fms-flutter-automation (python:3.14-alpine image) to it.
