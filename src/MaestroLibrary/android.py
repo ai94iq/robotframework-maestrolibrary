@@ -104,7 +104,7 @@ class Mirror:
             raise AssertionError(f"scrcpy did not run: {err}") from None
         command = [scrcpy, "-s", device, "--no-audio", f"--window-title=Maestro {device}",
                    *([] if control else ["--no-control"]), *options]
-        safe = re.sub(r"[^\w.-]+", "_", device)  # Python 3.10: no backslash inside an f-string expression
+        safe = re.sub(r"[^\w.-]+", "_", device)
         log = output_path(f"scrcpy-{safe}.log")
         with open(log, "wb") as out:  # scrcpy logs steadily; a file, unlike a pipe, never fills up
             try:

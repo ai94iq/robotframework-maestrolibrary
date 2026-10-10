@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python: ['3.10', '3.14']   # the floor in pyproject.toml and the latest release
+        python: ['3.12', '3.14']   # the floor in pyproject.toml and the latest release
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: actions/setup-python@v7.0.0
@@ -33,7 +33,6 @@ jobs:
       - run: |
           python -c "import tomllib; print(chr(10).join(tomllib.load(open('pyproject.toml', 'rb'))['project']['dependencies']))" > deps.txt
           python -m pip_audit -r deps.txt
-        if: matrix.python != '3.10'   # tomllib is 3.11+
       - run: python -m robot --dryrun --output NONE --report NONE --log NONE atest
       - run: python -m robot.libdoc MaestroLibrary MaestroLibrary.html
       - run: python -m build && python -m twine check --strict dist/*

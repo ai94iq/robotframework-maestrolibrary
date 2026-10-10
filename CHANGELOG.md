@@ -3,6 +3,9 @@
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Changed
+- Python 3.12 or newer is required (3.10 reached end of life on 2026-10-01; 3.12 is supported until
+  2028-10).
 
 ## [0.5.0] - 2026-10-10
 ### Added

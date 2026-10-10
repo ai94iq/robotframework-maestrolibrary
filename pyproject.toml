@@ -9,7 +9,7 @@ description = "Robot Framework mobile keywords on top of Maestro, with an Appium
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 authors = [{ name = "Abdulwahb Isam" }]
 dependencies = [
     "robotframework>=7.5",
@@ -40,7 +40,7 @@ version = {attr = "MaestroLibrary.__version__"}
 where = ["src"]
 
 [tool.setuptools.package-data]
-MaestroLibrary = ["py.typed", "studio.html"]
+MaestroLibrary = ["py.typed"]
 
 [tool.bandit]
 # B404/B603: the library drives `maestro`, `adb` and `scrcpy` through subprocess on purpose, always
