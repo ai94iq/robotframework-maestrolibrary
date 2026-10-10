@@ -329,10 +329,14 @@ ICON_NAMES = {"act": "mouse-pointer-click", "inspect": "scan-search", "grid": "s
               "device": "smartphone", "chevron-right": "chevron-right", "chevron-down": "chevron-down"}
 
 
-def svg_bytes(name, color, opacity=1.0):
+def svg_bytes(name, color, opacity=1.0, pixels=24):
+    """The icon's SVG; `pixels` is the physical size it is drawn at, so the stroke can land on whole pixels."""
+    # Lucide strokes are 2 units on a 24-unit grid: 1.67 px at 20 px (16 px at 125%), which anti-aliasing
+    # smears over two pixels. Round the stroke to whole device pixels instead.
+    width = max(1, round(2 * pixels / 24)) * 24 / pixels
     return ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="%s" stroke-opacity="%s" '
-            'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">%s</svg>'
-            % (QColor(color).name(), opacity, ICONS[ICON_NAMES.get(name, name)])).encode()
+            'stroke-width="%.3f" stroke-linecap="round" stroke-linejoin="round">%s</svg>'
+            % (QColor(color).name(), opacity, width, ICONS[ICON_NAMES.get(name, name)])).encode()
 
 
 class SvgIconEngine(QIconEngine):
@@ -344,8 +348,10 @@ class SvgIconEngine(QIconEngine):
 
     def paint(self, painter, rect, mode, state):
         color = self.on_color if state == QIcon.State.On and self.on_color else self.color
-        renderer = QSvgRenderer(QByteArray(svg_bytes(self.name, color, 0.4 if mode == QIcon.Mode.Disabled else 1.0)))
         side = min(rect.width(), rect.height())
+        ratio = painter.device().devicePixelRatioF() if painter.device() else 1.0
+        renderer = QSvgRenderer(QByteArray(svg_bytes(self.name, color, 0.4 if mode == QIcon.Mode.Disabled else 1.0,
+                                                     side * ratio)))
         painter.save()
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         renderer.render(painter, QRectF(rect.x() + (rect.width() - side) / 2, rect.y() + (rect.height() - side) / 2,
@@ -922,8 +928,8 @@ class RecorderPane(QWidget):
         save.clicked.connect(self.save)
         foot.addWidget(self.copy_button); foot.addWidget(save)
         layout.addLayout(foot)
-        self.icons = [(self.record_button, "record", "rec"), (self.undo_button, "undo", "ink2"),
-                      (self.clear_button, "clear", "ink2"), (self.copy_button, "copy", "ink2"),
+        self.icons = [(self.record_button, "record", "rec"), (self.undo_button, "undo", "ink"),
+                      (self.clear_button, "clear", "ink"), (self.copy_button, "copy", "ink"),
                       (save, "save", "accent_ink")]
         for button, _, _ in self.icons:
             button.setIconSize(ICON_SIZE)
@@ -1165,7 +1171,7 @@ class MainWindow(QMainWindow):
         self.message.setText(text)
         self.message.setStyleSheet(f"color: {self.t['rec']};")       # stays until the next step works
 
-    def _iconed(self, target, name, key="ink2", on="accent"):
+    def _iconed(self, target, name, key="ink", on="accent"):
         """Gives an action or button a theme-following icon whose checked state uses `on` (the accent)."""
         self._icons.append((target, name, key, on))
         target.setIcon(icon(name, self.t[key], self.t[on]))
@@ -1190,7 +1196,7 @@ class MainWindow(QMainWindow):
 
     def _dot(self, key):
         self.dot.setPixmap(dot_pixmap(self.t[key]))
-        self.device_icon.setPixmap(icon("device", self.t["ink2"]).pixmap(ICON_SIZE))
+        self.device_icon.setPixmap(icon("device", self.t["ink"]).pixmap(ICON_SIZE, self.devicePixelRatioF()))
 
     def show_newest(self, reader):
         image, _ = reader.take()
