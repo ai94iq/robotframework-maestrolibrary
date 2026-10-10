@@ -58,7 +58,7 @@ class DriverReader:
     """Reads the current device's tree through an adb forward to the driver; `lib` gives adb and the device."""
 
     def __init__(self, lib):
-        self.lib, self.device, self.port, self._call = lib, None, None, None
+        self.lib, self.device, self.port, self._call, self._channel = lib, None, None, None, None
 
     def _connect(self):
         import grpc                           # the studio extra; only Studio reads this way
@@ -67,17 +67,22 @@ class DriverReader:
         answer = subprocess.run([self.lib.adb(), "-s", device, "forward", "tcp:0", f"tcp:{DRIVER_PORT}"],
                                 capture_output=True, text=True, timeout=10, check=True).stdout
         self.port = int(answer.strip())
-        channel = grpc.insecure_channel(f"127.0.0.1:{self.port}", options=[("grpc.max_receive_message_length", MAX_BYTES)])
-        self._call = channel.unary_unary(METHOD, request_serializer=bytes, response_deserializer=bytes)
+        self._channel = grpc.insecure_channel(f"127.0.0.1:{self.port}",
+                                              options=[("grpc.max_receive_message_length", MAX_BYTES)])
+        self._call = self._channel.unary_unary(METHOD, request_serializer=bytes, response_deserializer=bytes)
         self.device = device
 
     def screen(self, timeout=10):
+        if self.lib.platform != "android":       # an iOS device after a switch: the caller falls back to Maestro
+            raise LookupError("The driver reader reads Android devices only.")
         if self._call is None or self.device != self.lib.device:       # first read, or the device was switched
             self._connect()
         return elements_from_xml(hierarchy_text(self._call(b"", timeout=timeout)))
 
     def close(self):
+        if self._channel:
+            self._channel.close()
         if self.port and self.device:
             subprocess.run([self.lib.adb(), "-s", self.device, "forward", "--remove", f"tcp:{self.port}"],
                            capture_output=True, timeout=10)
-        self.port = self._call = None
+        self.port = self._call = self._channel = None

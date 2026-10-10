@@ -107,6 +107,15 @@ class SpeedTest(unittest.TestCase):
         sleep.assert_not_called()
 
 
+    def test_adb_shell_check_raises_on_a_failed_command(self):
+        self.lib = MaestroLibrary(run_on_failure="Nothing")
+        self.lib._adb, self.lib.device = "adb", "NOPE"
+        failed = mock.Mock(stdout="", returncode=1, stderr="error: device 'NOPE' not found")
+        with mock.patch("MaestroLibrary.subprocess.run", return_value=failed):
+            self.assertEqual(self.lib.adb_shell("input", "tap", "1", "1", purpose="tapping"), "")
+            with self.assertRaisesRegex(AssertionError, "adb failed while tapping: error: device 'NOPE' not found"):
+                self.lib.adb_shell("input", "tap", "1", "1", purpose="tapping", check=True)
+
     def test_adb_runs_from_the_path_it_was_found_at(self):
         self.lib = MaestroLibrary(run_on_failure="Nothing")
         self.lib.mcp = MaestroMCP(FAKE)

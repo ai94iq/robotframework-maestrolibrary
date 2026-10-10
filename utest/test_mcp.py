@@ -81,6 +81,26 @@ class MaestroMCPTest(unittest.TestCase):
         self.mcp = MaestroMCP(FAKE)
         self.addCleanup(self.mcp.close)
 
+    def test_calls_from_several_threads_take_turns(self):
+        import threading
+        import time
+        inside, overlaps = [0], []
+
+        def request(method, params, timeout):
+            inside[0] += 1
+            overlaps.append(inside[0])
+            time.sleep(0.05)
+            inside[0] -= 1
+            return {"content": []}
+        self.mcp.start()
+        with mock.patch.object(self.mcp, "_request", side_effect=request):
+            threads = [threading.Thread(target=self.mcp.call_tool, args=("run", {})) for _ in range(4)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+        self.assertEqual(overlaps, [1, 1, 1, 1])
+
     def test_call_returns_content_without_viewer_notice(self):
         content = self.mcp.call_tool("run", {"yaml": "- back"})
         self.assertEqual([json.loads(c["text"]) for c in content], [{"yaml": "- back"}])

@@ -244,22 +244,26 @@ class MaestroLibrary(DynamicCore):
                 logger.warn(str(err))
         return self._xcrun or None
 
-    def adb_shell(self, *args, purpose):
+    def adb_shell(self, *args, purpose, check=False):
         """Runs `adb shell args` on the current Android device and returns its output.
 
         Returns None, with a warning naming `purpose`, when adb is missing or doesn't answer:
         Maestro itself needs no adb, so the checks built on it degrade instead of failing.
+        With `check`, a non-zero exit (adb's own, or the device command's) raises AssertionError.
         """
         adb = self.adb()
         if not adb:
             logger.warn(f"{ADB_MISSING} Skipped {purpose}.")
             return None
         try:
-            return subprocess.run([adb, "-s", self.device, "shell", *args], capture_output=True,
-                                  text=True, errors="replace", timeout=ADB_TIMEOUT_S).stdout
+            done = subprocess.run([adb, "-s", self.device, "shell", *args], capture_output=True,
+                                  text=True, errors="replace", timeout=ADB_TIMEOUT_S)
         except subprocess.TimeoutExpired:
             logger.warn(f"adb did not answer within {ADB_TIMEOUT_S} s while {purpose}; is the device responsive?")
             return None
+        if check and done.returncode:
+            raise AssertionError(f"adb failed while {purpose}: {(done.stderr or done.stdout).strip()[:200]}")
+        return done.stdout
 
     def run_commands(self, *commands, app_id=None, log=True):
         """Runs Maestro commands (dicts or strings) as one flow on the current device."""

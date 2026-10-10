@@ -67,6 +67,7 @@ class MaestroMCP:
         self._lines = None
         self._stderr = collections.deque(maxlen=50)
         self._id = 0
+        self._lock = threading.RLock()     # one request in flight: answers are matched by the last id sent
 
     @property
     def running(self):
@@ -105,8 +106,9 @@ class MaestroMCP:
 
         Raises MaestroError if the tool reports an error.
         """
-        self.start()
-        result = self._request("tools/call", {"name": name, "arguments": arguments}, timeout)
+        with self._lock:                   # callers on several threads (Studio's workers) take turns
+            self.start()
+            result = self._request("tools/call", {"name": name, "arguments": arguments}, timeout)
         content = [c for c in result.get("content", []) if VIEWER_NOTICE not in c.get("text", "")]
         if result.get("isError"):
             text = " ".join(c.get("text", "") for c in content).strip()

@@ -304,6 +304,19 @@ class WindowTest(WindowCase):
         self.worker.run("type", {"text": "${1}"})
         self.assertEqual(self.window.recorder.lines.count(), 0)
 
+    def test_steps_change_worker_only_when_the_other_is_idle(self):
+        from unittest import mock
+        window = self.window
+        window.touch, window.live, self.lib.adb_path = mock.Mock(), True, "adb"
+        window.busy = {"main": 0, "touch": 0}
+        self.assertEqual(window._lane("click"), "touch")         # live, a tree, an Android touch step
+        self.assertEqual(window._lane("launch"), "main")
+        window.busy["touch"] = 1
+        self.assertEqual(window._lane("launch"), "touch")        # queued behind the running tap, not beside it
+        window.busy = {"main": 1, "touch": 0}
+        self.assertEqual(window._lane("click"), "main")          # behind the running Maestro step
+        window.touch = None
+
     def test_locators_table_has_no_selection(self):
         from PySide6.QtWidgets import QAbstractItemView
         self.assertEqual(self.window.inspector.locators.selectionMode(), QAbstractItemView.SelectionMode.NoSelection)

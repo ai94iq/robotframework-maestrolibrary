@@ -49,6 +49,23 @@ class DriverTest(unittest.TestCase):
             elements_from_xml(bomb)
 
 
+class DriverReaderTest(unittest.TestCase):
+    def test_ios_is_refused_at_once_and_close_closes_the_channel(self):
+        from unittest import mock
+        from MaestroLibrary.driver import DriverReader
+        lib = mock.Mock(platform="ios")
+        reader = DriverReader(lib)
+        with self.assertRaises(LookupError):
+            reader.screen()
+        lib.adb.assert_not_called()                       # no adb forward for a device it cannot read
+        reader._channel, reader.port, reader.device = mock.Mock(), 5000, "SER"
+        channel = reader._channel
+        with mock.patch("MaestroLibrary.driver.subprocess.run"):
+            reader.close()
+        channel.close.assert_called_once()
+        self.assertIsNone(reader._channel)
+
+
 class SessionReaderTest(unittest.TestCase):
     def setUp(self):
         from test_studio import FakeLib

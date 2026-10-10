@@ -1395,6 +1395,7 @@ class MainWindow(QMainWindow):
         self.live_view = live_view            # (device, platform) -> a started StreamReader, or None
         self.devices = [d if isinstance(d, dict) else {"device_id": d} for d in devices]
         self.live, self.pending, self._icons, self._cards, self.queued = False, 0, [], [], []
+        self.busy = {"main": 0, "touch": 0}     # steps in flight per worker
         self.settings = settings if settings is not None else QSettings("MaestroLibrary", "Studio")
         mode = self.settings.value("theme", "system")
         self.theme_mode = mode if mode in THEME_MODES else "system"
@@ -1445,14 +1446,14 @@ class MainWindow(QMainWindow):
         worker.recorded.connect(self._recorded)
         worker.failed.connect(self.error)
         worker.tree.connect(self._tree)
-        worker.done.connect(self._done)
+        worker.done.connect(lambda: self._done("main"))
         worker.ended.connect(self._ended)
         worker.image.connect(self.device.set_frame)
         worker.switched.connect(self._switched)
         if touch:
             touch.recorded.connect(self._recorded)
             touch.failed.connect(self.error)
-            touch.done.connect(self._done)
+            touch.done.connect(lambda: self._done("touch"))
             touch.ended.connect(self._ended)
         self.poll = QTimer(self)
         self.poll.timeout.connect(lambda: worker.request_poll() if not self.pending else None)
@@ -1579,10 +1580,21 @@ class MainWindow(QMainWindow):
         self.recorder.say(f"Running {self.pending} step{'s' if self.pending > 1 else ''}")
         self.queued.append(self._preview(kind, kwargs))
         self._show_pending()
-        if self.touch and self.live and self.pending == 1 and self.device.tree and self.session.touch(kind):
-            self.touch.request.emit(kind, dict(kwargs, tree=self.device.tree))   # at once, located on what was shown
-        else:
-            self.worker.request.emit(kind, kwargs)
+        lane = self._lane(kind)
+        self.busy[lane] += 1
+        if lane == "touch" and self.session.touch(kind) and self.device.tree:
+            kwargs = dict(kwargs, tree=self.device.tree)            # located on what the user saw
+        (self.touch if lane == "touch" else self.worker).request.emit(kind, kwargs)
+
+    def _lane(self, kind):
+        """The worker for a step. Steps leave a lane only once it is idle, so they reach the device in order."""
+        if not self.touch:
+            return "main"
+        if self.busy["touch"]:
+            return "touch"                    # behind the touch steps still running (a Maestro step runs there too)
+        if self.busy["main"] or not (self.live and self.device.tree and self.session.touch(kind)):
+            return "main"
+        return "touch"
 
     def _preview(self, kind, kwargs):
         """The line this step will most likely record, shown at once: Maestro takes seconds to finish a step."""
@@ -1615,8 +1627,9 @@ class MainWindow(QMainWindow):
         self.device.set_tree(tree)
         self.inspector.set_tree(tree)
 
-    def _done(self):
+    def _done(self, lane="main"):
         self.pending = max(0, self.pending - 1)
+        self.busy[lane] = max(0, self.busy[lane] - 1)
 
     def error(self, text):
         self.recorder.say(text, "rec")       # stays until the next step works

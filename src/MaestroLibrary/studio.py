@@ -122,7 +122,7 @@ class Session:
     def _adb_input(self, *args):
         # every argument is an int or a fixed word: adb joins them into one device shell line
         if self.lib.adb_shell("input", *(str(int(a)) if not isinstance(a, str) else a for a in args),
-                              purpose="sending a touch step") is None:
+                              purpose="sending a touch step", check=True) is None:
             raise AssertionError("adb did not run the step on the device.")
 
     def _touch(self, kind, tree, x, y, x2, y2):
@@ -244,7 +244,7 @@ def main(argv=None):
     window = thread = touch_thread = reader = None
     try:
         device = lib.device_id()
-        reader = DriverReader(lib) if lib.platform == "android" and lib.adb() else None
+        reader = DriverReader(lib) if lib.adb() else None
         session = Session(lib, args.app, reader=reader)
         worker = studio_qt.ActionWorker(session)
         thread = QThread()

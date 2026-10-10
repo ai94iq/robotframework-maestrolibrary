@@ -44,12 +44,14 @@ class FakeLib:
     def __init__(self, elements):
         self._elements, self.ran, self.app_id, self.fail = elements, [], "com.app", None
         self.device, self.platform, self.device_switches = "SER", "android", []
-        self.adb_path, self.shell = None, []
+        self.adb_path, self.shell, self.adb_fails = None, [], False
 
     def adb(self):
         return self.adb_path
 
-    def adb_shell(self, *args, purpose):
+    def adb_shell(self, *args, purpose, check=False):
+        if self.adb_fails and check:
+            raise AssertionError(f"adb failed while {purpose}: error: device 'SER' not found")
         self.shell.append(args)
         return ""
 
@@ -117,6 +119,12 @@ class SessionTest(unittest.TestCase):
         self.s.act("click", 500, 200, tree=self.s.tree())
         self.s.act("type", text="wifi")
         self.assertEqual(self.s.lines, [r"Input Text    id\=com.app:id/search    wifi"])
+
+    def test_a_failed_adb_touch_records_nothing(self):
+        self.lib.adb_path, self.lib.adb_fails = "adb", True
+        with self.assertRaisesRegex(AssertionError, "not found"):
+            self.s.act("click", 500, 200, tree=self.s.tree())
+        self.assertEqual(self.s.lines, [])
 
     def test_without_adb_touch_steps_use_maestro(self):
         self.s.act("click", 500, 200, tree=self.s.tree())
