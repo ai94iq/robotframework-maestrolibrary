@@ -166,6 +166,17 @@ WIP, written from Maestro's and Apple's docs, needs testing on a simulator:
 Not checked on iOS yet: Kill Application, permission names for `Set Application Permissions`,
 which attributes `Get Element Attribute` sees, and how `id=` matches.
 
+## Converting Maestro Studio flows
+Record a flow in Maestro Studio, save its YAML, and convert it to a Robot test:
+```
+pip install "robotframework-maestrolibrary[convert]"
+python -m MaestroLibrary.flow2robot login.yaml > login.robot
+```
+Commands with a keyword become that keyword (`tapOn` then `inputText` becomes one `Input Text`);
+the rest, such as a selector with `index`, become an inline `Run Flow` line. Maestro matches text
+as a regular expression, so text with regex characters comes out as `regex=`. Move the locators
+into variables before the test joins a suite.
+
 ## Maestro CLI coverage
 The library talks to `maestro mcp`. What the other `maestro` subcommands do, and where it lives here:
 

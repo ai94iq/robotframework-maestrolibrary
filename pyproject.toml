@@ -15,6 +15,9 @@ dependencies = [
     "robotframework>=7.5",
     "robotframework-pythonlibcore>=4.6.0",
 ]
+
+[project.optional-dependencies]
+convert = ["pyyaml>=6.0.3"]   # flow2robot
 classifiers = [
     "Framework :: Robot Framework",
     "Framework :: Robot Framework :: Library",
