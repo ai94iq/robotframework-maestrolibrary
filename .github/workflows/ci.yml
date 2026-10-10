@@ -51,6 +51,7 @@ jobs:
   studio:
     # Studio's window, decoder and stream tests on the other two desktop platforms.
     strategy:
+      fail-fast: false   # each platform reports its own result
       matrix:
         os: [windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}

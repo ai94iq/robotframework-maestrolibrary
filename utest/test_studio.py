@@ -221,7 +221,8 @@ class StreamTest(unittest.TestCase):
             with mock.patch.object(stream, "find_exe", return_value=exe), \
                     mock.patch.object(stream.subprocess, "run", return_value=answer), \
                     mock.patch.dict(os.environ, {"SCRCPY_SERVER_PATH": ""}):
-                self.assertEqual(stream.server_file(), (server, "5.0"))
+                found, version = stream.server_file()
+                self.assertEqual((os.path.realpath(found), version), (os.path.realpath(server), "5.0"))   # macOS: /var is /private/var
                 answer.stdout = "fake 1.0"
                 with self.assertRaisesRegex(RuntimeError, "does not answer like scrcpy"):
                     stream.server_file()
