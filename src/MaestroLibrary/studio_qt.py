@@ -14,7 +14,7 @@ from PySide6.QtGui import (QAction, QActionGroup, QBrush, QColor, QFontDatabase,
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (QAbstractItemView, QApplication, QFileDialog, QFrame, QGraphicsDropShadowEffect,
                                QGridLayout, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QListWidget,
-                               QListWidgetItem, QMainWindow, QMenu, QPushButton, QSizePolicy, QSplitter, QStyle,
+                               QListWidgetItem, QMainWindow, QMenu, QPushButton, QScrollArea, QSizePolicy, QSplitter, QStyle,
                                QStyledItemDelegate, QStyleOptionViewItem, QTableWidget, QTableWidgetItem, QToolBar, QToolButton,
                                QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget, QWidgetAction)
 
@@ -241,7 +241,10 @@ QFrame#controls QToolButton {{ padding: 4px 6px; font-size: 12px; }}
 QToolButton#tool, QToolButton#disclosure {{ background: transparent; border: 1px solid transparent; border-radius: 6px;
     padding: 4px; color: {ink2}; }}
 QToolButton#disclosure {{ padding: 4px 6px; font-size: 12px; font-weight: 600; }}
-QToolButton#tool:hover, QToolButton#disclosure:hover {{ background: {hover}; }}
+QToolButton#tool:hover, QToolButton#disclosure:hover, QToolButton#copy:hover {{ background: {hover}; }}
+QToolButton#copy {{ background: transparent; border: 1px solid transparent; border-radius: 6px; padding: 0; }}
+QToolButton#copy:pressed {{ background: {line}; }}
+QToolButton#copy:focus {{ border-color: {accent}; }}
 QToolButton#tool:focus, QToolButton#disclosure:focus {{ border-color: {accent}; }}
 QToolBar#shell QToolButton::menu-indicator {{ image: none; width: 0px; }}
 QToolBar#shell QToolButton[popupMode="2"] {{ padding-right: 10px; }}
@@ -258,13 +261,20 @@ QLabel#pane {{ font-size: 12px; font-weight: 500; color: {ink2}; }}
 QLabel#hint, QLabel#hover, QLabel#message {{ color: {ink2}; font-size: 12px; }}
 QLabel#title {{ font-size: 17px; font-weight: 700; color: {ink}; }}
 QLabel#title[empty="true"] {{ font-size: 13px; font-weight: 400; color: {ink2}; }}
+QLabel#chip {{ background: {raised}; color: {ink2}; font-size: 11px; border-radius: 999px; padding: 2px 8px; }}
+QWidget#actions QPushButton {{ min-height: 30px; padding: 0 12px; }}
+QWidget#actions QPushButton::menu-indicator {{ image: url({chevron_down}); width: 12px; height: 12px;
+    subcontrol-origin: padding; subcontrol-position: right center; right: 8px; }}
+QWidget#actions QPushButton[hasMenu="true"] {{ padding-right: 28px; }}
 QLabel#empty {{ color: {ink2}; }}
 QPushButton {{ background: {raised}; border: 1px solid {line}; border-radius: 8px; padding: 6px 12px; }}
 QPushButton:hover {{ background: {hover}; }}
 QPushButton:pressed {{ background: {line}; }}
 QPushButton:focus {{ border-color: {accent}; }}
-QPushButton#recording {{ background: transparent; border: 1px solid transparent; padding: 4px 8px; color: {ink2}; }}
+QPushButton#recording {{ background: transparent; border: 1px solid transparent; border-radius: 8px; padding: 4px 10px; color: {ink2}; }}
 QPushButton#recording:hover {{ background: {hover}; }}
+QPushButton#recording[paused="true"], QPushButton#recording[paused="true"]:hover {{ background: {warn_soft}; color: {warn};
+    border-radius: 12px; font-weight: 600; }}
 QPushButton#recording:checked {{ color: {ink}; font-weight: 600; }}
 QPushButton#recording:focus {{ border-color: {accent}; }}
 QPushButton#primary {{ background: {accent}; color: {accent_ink}; border-color: {accent}; font-weight: 600; }}
@@ -300,6 +310,10 @@ QScrollBar::add-line, QScrollBar::sub-line {{ width: 0px; height: 0px; border: 0
     subcontrol-origin: margin; }}
 QScrollBar::add-page, QScrollBar::sub-page {{ background: none; }}
 QSplitter::handle {{ background: transparent; }}
+QSplitter#vsplit::handle:vertical {{ height: 6px; }}
+QSplitter#vsplit::handle:vertical:hover {{ background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 transparent,
+    stop:0.4 transparent, stop:0.4001 {line}, stop:0.6 {line}, stop:0.6001 transparent, stop:1 transparent); }}
+QScrollArea#details, QScrollArea#details > QWidget > QWidget {{ background: transparent; border: 0; }}
 QMenu {{ background: {panel}; border: 1px solid {line}; border-radius: 10px; padding: 6px; }}
 QMenu::item {{ padding: 7px 16px 7px 12px; border-radius: 6px; }}
 QMenu::item:selected {{ background: {accent_soft}; color: {ink}; }}
@@ -791,8 +805,20 @@ class InspectorPane(QWidget):
         super().__init__()
         self.tree, self.element = None, None
         self.t = theme or THEMES["light"]
-        layout = QVBoxLayout(self); layout.setContentsMargins(12, 12, 12, 8); layout.setSpacing(8)
-        layout.addWidget(plain_label("Source (system UI and unlabeled containers left out)", "pane"))
+        outer = QVBoxLayout(self); outer.setContentsMargins(12, 12, 12, 8); outer.setSpacing(0)
+        self.split = QSplitter(Qt.Orientation.Vertical)
+        self.split.setObjectName("vsplit")
+        self.split.setChildrenCollapsible(False)
+        outer.addWidget(self.split)
+        top = QWidget()
+        layout = QVBoxLayout(top); layout.setContentsMargins(0, 0, 0, 6); layout.setSpacing(8)
+        head_row = QHBoxLayout(); head_row.setSpacing(8)
+        self.source_label = plain_label("Elements", "pane")
+        self.count = plain_label("0 locatable", "chip")
+        for w in (self.source_label, self.count):
+            w.setToolTip("System UI and containers without text or id are left out")
+        head_row.addWidget(self.source_label); head_row.addWidget(self.count); head_row.addStretch()
+        layout.addLayout(head_row)
         self.source = QTreeWidget()
         self.source.setFrameShape(QFrame.Shape.NoFrame)
         self.source.setHeaderLabels(["Element", "Class"])
@@ -803,6 +829,9 @@ class InspectorPane(QWidget):
         self.source.header().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         self.source.itemClicked.connect(lambda item: self.picked.emit(item.data(0, Qt.ItemDataRole.UserRole)))
         layout.addWidget(self.source, 1)
+        self.split.addWidget(top)
+        bottom = QWidget()
+        layout = QVBoxLayout(bottom); layout.setContentsMargins(0, 6, 0, 0); layout.setSpacing(8)
         layout.addWidget(plain_label("Selected element", "pane"))
         self.title = plain_label(PICK_HINT, "title")
         self.title.setWordWrap(True)
@@ -828,6 +857,7 @@ class InspectorPane(QWidget):
         self.locators.cellDoubleClicked.connect(lambda r, c: self._copy(r))
         layout.addWidget(self.locators)
         self.actions = QWidget()
+        self.actions.setObjectName("actions")
         actions = QHBoxLayout(self.actions); actions.setContentsMargins(0, 0, 0, 0); actions.setSpacing(8)
         self.tap_button = QPushButton("Tap")
         self.tap_button.setObjectName("primary")
@@ -838,6 +868,7 @@ class InspectorPane(QWidget):
                            ("should_be_visible", "Should be visible"), ("text_should_be", "Text should be")):
             self.assert_menu.addAction(text).triggered.connect(lambda _=False, k=kind: self._act(k))
         self.assert_button.setMenu(self.assert_menu)
+        self.assert_button.setProperty("hasMenu", True)
         actions.addWidget(self.tap_button); actions.addWidget(self.assert_button); actions.addStretch()
         layout.addWidget(self.actions)
         self.attr_toggle = QToolButton()
@@ -853,6 +884,14 @@ class InspectorPane(QWidget):
         self.attr_head = QWidget(); self.attr_head.setLayout(head)
         layout.addWidget(self.attr_head)
         layout.addWidget(self.attributes)
+        layout.addStretch(1)
+        scroll = QScrollArea(); scroll.setObjectName("details"); scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setWidget(bottom)
+        self.split.addWidget(scroll)
+        self.split.setStretchFactor(0, 55); self.split.setStretchFactor(1, 45)
+        self.split.setSizes([550, 450])
         self.retheme()
         self.show_element(None)
 
@@ -865,8 +904,11 @@ class InspectorPane(QWidget):
         self.source.blockSignals(True)
         self.source.clear()
 
+        shown = [0]
+
         def add(rows, parent):
             for element, children in rows:
+                shown[0] += 1
                 item = QTreeWidgetItem([first_line(element), (element.get("cls") or "").rsplit(".", 1)[-1]])
                 item.setData(0, Qt.ItemDataRole.UserRole, element)
                 if parent is None:
@@ -875,6 +917,7 @@ class InspectorPane(QWidget):
                     parent.addChild(item)
                 add(children, item)
         add(visible_tree(tree.get("screen", [])), None)
+        self.count.setText("%d locatable" % shown[0])
         self.source.expandAll()
         self.source.blockSignals(False)
         self.source.setUpdatesEnabled(True)
@@ -909,12 +952,14 @@ class InspectorPane(QWidget):
             self._row(self.locators, locator, "unique" if count == 1 else f"{count} matches")
             row = self.locators.rowCount() - 1
             button = QToolButton()
-            button.setObjectName("tool")
-            button.setAutoRaise(True)
+            button.setObjectName("copy")
+            button.setFixedSize(28, 28)
             button.setIconSize(ICON_SIZE)
             button.setToolTip("Copy locator")
             button.clicked.connect(lambda _=False, r=row: self._copy(r))
-            self.locators.setCellWidget(row, 2, button)
+            cell = QWidget(); box = QHBoxLayout(cell); box.setContentsMargins(0, 0, 0, 0)
+            box.addWidget(button, 0, Qt.AlignmentFlag.AlignCenter)
+            self.locators.setCellWidget(row, 2, cell)
         for key, value in element.items():
             if key != "c":
                 self._row(self.attributes, key, str(value))
@@ -949,7 +994,7 @@ class RecorderPane(QWidget):
 
     def __init__(self, session, theme):
         super().__init__()
-        self.session, self.t = session, theme
+        self.session, self.t, self.kind = session, theme, "ok"
         layout = QVBoxLayout(self); layout.setContentsMargins(12, 12, 12, 12); layout.setSpacing(8)
         self.name = QLineEdit("Recorded Test")
         self.name.setObjectName("testname")
@@ -961,7 +1006,7 @@ class RecorderPane(QWidget):
         self.record_button = QPushButton(GAP_SPACE + "Recording")
         self.record_button.setObjectName("recording")
         self.record_button.setCheckable(True); self.record_button.setChecked(True)
-        self.record_button.setToolTip("Recording on or off; paused steps still run on the device")
+        self.record_button.setToolTip("Pause recording")
         self.record_button.toggled.connect(self._record)
         self.undo_button, self.clear_button = QToolButton(), QToolButton()
         for button, tip in ((self.undo_button, "Undo last line"), (self.clear_button, "Clear all lines")):
@@ -988,6 +1033,8 @@ class RecorderPane(QWidget):
         foot = QHBoxLayout(); foot.setSpacing(8)
         self.message = plain_label("", "message")
         self.message.setWordWrap(True)
+        self.status = plain_label("", "status"); self.status.setFixedSize(8, 8); self.status.setVisible(False)
+        foot.addWidget(self.status, 0, Qt.AlignmentFlag.AlignVCenter)
         foot.addWidget(self.message, 1)
         self.copy_button = QPushButton(GAP_SPACE + "Copy")
         self.copy_button.clicked.connect(lambda: QGuiApplication.clipboard().setText(self.session.robot(self.name.text())))
@@ -1007,8 +1054,10 @@ class RecorderPane(QWidget):
             button.setIcon(icon(name, self.t[key]))
         dots = QIcon()          # a small red dot while recording, a hollow grey one while paused
         dots.addPixmap(dot_pixmap(self.t["rec"]), QIcon.Mode.Normal, QIcon.State.On)
-        dots.addPixmap(dot_pixmap(self.t["ink3"], hollow=True), QIcon.Mode.Normal, QIcon.State.Off)
+        dots.addPixmap(dot_pixmap(self.t["warn"], hollow=True), QIcon.Mode.Normal, QIcon.State.Off)
         self.record_button.setIcon(dots)
+        if self.message.text():
+            self.status.setPixmap(dot_pixmap(self.t[self.kind], 8))
         self.lines.viewport().update()
 
     def _remove_selected(self):
@@ -1019,6 +1068,16 @@ class RecorderPane(QWidget):
     def _record(self, on):
         self.session.recording = on
         self.record_button.setText(GAP_SPACE + ("Recording" if on else "Paused"))
+        self.record_button.setToolTip("Pause recording" if on else "Resume recording")
+        self.record_button.setProperty("paused", not on)
+        self.record_button.style().polish(self.record_button)
+
+    def say(self, text, key="ok"):
+        """The footer note with a leading status dot (`key` is a theme colour); no text hides both."""
+        self.message.setText(text)
+        self.kind = key
+        self.status.setPixmap(dot_pixmap(self.t[key], 8))
+        self.status.setVisible(bool(text))
 
     def show_lines(self, lines, stamp=False):
         self.lines.clear()
@@ -1128,7 +1187,7 @@ class MainWindow(QMainWindow):
         self.inspector.picked.connect(self._pick)
         self.device.hovered.connect(self.hover.setText)
         self.recorder.edit.connect(worker.edit)
-        self.recorder.saved.connect(self.message.setText)
+        self.recorder.saved.connect(self.recorder.say)
         worker.edited.connect(lambda: self.recorder.show_lines(self.session.lines))
         worker.recorded.connect(self._recorded)
         worker.failed.connect(self.error)
@@ -1246,17 +1305,16 @@ class MainWindow(QMainWindow):
 
     def submit(self, kind, kwargs):
         self.pending += 1
-        self.message.setText(f"Running {self.pending} step{'s' if self.pending > 1 else ''}")
+        self.recorder.say(f"Running {self.pending} step{'s' if self.pending > 1 else ''}")
         self.worker.request.emit(kind, kwargs)
 
     def _recorded(self, line):
         self.recorder.show_lines(self.session.lines, stamp=line is not None)
         if line is not None:
             self.device.flash()
-        self.message.setStyleSheet("")
         text = "Recorded" if line is not None else "Ran (recording is paused)"
-        self.message.setText(text)
-        QTimer.singleShot(4000, lambda: self.message.setText("") if self.message.text() == text else None)
+        self.recorder.say(text)
+        QTimer.singleShot(4000, lambda: self.recorder.say("") if self.message.text() == text else None)
 
     def _tree(self, tree):
         self.device.set_tree(tree)
@@ -1266,8 +1324,7 @@ class MainWindow(QMainWindow):
         self.pending = max(0, self.pending - 1)
 
     def error(self, text):
-        self.message.setText(text)
-        self.message.setStyleSheet(f"color: {self.t['rec']};")       # stays until the next step works
+        self.recorder.say(text, "rec")       # stays until the next step works
 
     def _iconed(self, target, name, key="ink", on="accent"):
         """Gives an action or button a theme-following icon whose checked state uses `on` (the accent)."""
