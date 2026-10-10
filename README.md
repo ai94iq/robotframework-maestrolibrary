@@ -234,8 +234,8 @@ and Python steps are not Maestro commands, so they are not in the flow; waiting 
 pip install "robotframework-maestrolibrary[studio]"      # PySide6 and PyAV
 python -m MaestroLibrary.studio --app com.android.vending
 ```
-A window shows the device screen live, and every action you take on it runs on the device
-through MaestroLibrary while the matching Robot line is recorded:
+A window shows the device screen live, and every action you take on it runs on the device while
+the matching Robot line is recorded:
 
 | On the screen | Recorded |
 |---|---|
@@ -243,7 +243,7 @@ through MaestroLibrary while the matching Robot line is recorded:
 | type, then Enter | merged into the click before it: `Input Text` (`Input Password` with `${PASSWORD}` when Secret is on) |
 | drag | `Swipe By Percent` |
 | right-click | `Long Press`, `Wait Until Page Contains Element`, `Element Should Be Visible`, `Element Text Should Be` |
-| toolbar | `Open Application`, `Go Back`, `Hide Keyboard`, `Capture Page Screenshot` |
+| control bar under the screen | `Open Application`, `Go Back`, `Hide Keyboard`, `Capture Page Screenshot` |
 
 Inspect mode selects instead of acting: the element's suggested locators (with how many elements
 each matches), its attributes and the source tree. Undo, Clear, Copy and Save work on the recorded
@@ -254,9 +254,15 @@ the GAP lines as test id requests before the test joins a suite.
   encoder at up to 1080 px (`--max-size`; `--video-encoder` picks another encoder from
   `scrcpy --list-encoders`). Without it, or on an iOS simulator, the view refreshes with a
   screenshot after each step.
-- Measured on an Android 15 phone: a tap shows up in the window 120 to 150 ms later (median), app
-  redraw included.
-- The Theme menu in the toolbar offers System, Light and Dark; the choice is remembered between runs.
+- On Android with adb, taps, long presses, swipes and Back go to the device with `adb shell input`
+  and are recorded at once; typing, assertions and Launch run through Maestro, which waits for the
+  screen to settle. The recorded line is the same either way, and the locator is checked when the
+  test runs. Measured on an Android 15 phone: the line is recorded 0.13 to 0.17 s after a click and
+  the screen changes 0.33 to 0.43 s after it (a Maestro tap took 4 to 7 s).
+- With several devices connected, the device box in the toolbar lists them (phones and emulators
+  marked apart); picking one moves Studio to it in place and keeps the recorded lines.
+- The theme button in the toolbar cycles System, Light and Dark; the choice is remembered between
+  runs.
 - Shortcuts: `Ctrl+1` Act, `Ctrl+2` Inspect, `Ctrl+Z` undo, `Ctrl+S` save, `Delete` removes the
   selected recorded line.
 - Keep Robot runs off the device while Studio is open: Maestro allows one session per device.

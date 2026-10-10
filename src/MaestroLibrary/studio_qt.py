@@ -175,13 +175,12 @@ class ActionWorker(QObject):
             self.ended.emit()          # the pending line goes first, so the recorded one is the last drawn
             self.recorded.emit(line)
         finally:
-            if self.follow:
+            if self.follow:               # the touch worker: the main one reads the screen
                 self.follow.request_poll()
-                self.done.emit()
-                return
-            self.refresh()
-            if not self.live:
-                self.grab()
+            else:
+                self.refresh()
+                if not self.live:
+                    self.grab()
             self.done.emit()
 
     @Slot()
@@ -306,6 +305,9 @@ QLabel#product {{ font-size: 17px; font-weight: 700; padding-right: 8px; }}
 QLabel#state {{ color: {ink}; }}
 QLabel#pane {{ font-size: 12px; font-weight: 500; color: {ink2}; }}
 QLabel#hint, QLabel#hover, QLabel#message {{ color: {ink2}; font-size: 12px; }}
+QFrame#notice {{ border-radius: 8px; background: transparent; }}
+QFrame#notice[kind="rec"] {{ background: {rec_soft}; }}
+QFrame#notice[kind="rec"] QLabel#message {{ color: {ink}; }}
 QLabel#title {{ font-size: 17px; font-weight: 700; color: {ink}; }}
 QLabel#chip {{ background: {accent_soft}; color: {accent_text}; font-size: 11px; font-weight: 600; border-radius: 9px;
     padding: 2px 8px; }}
@@ -535,6 +537,9 @@ def first_line(element):
     """A short name for an element: its text, content-desc or hint, else the last part of its id."""
     text = element.get("txt") or element.get("a11y") or element.get("hint") or (element.get("rid") or "").rsplit("/", 1)[-1]
     return text.split("\n")[0]
+
+
+NOTE_MAX = 160              # characters of a footer note; Maestro errors can run to pages
 
 
 class EmptyState(QWidget):
@@ -1215,12 +1220,17 @@ class RecorderPane(QWidget):
         self.empty = EmptyState(theme, "circle-dot", "No steps yet",
                                 "Act on the device: each tap, swipe and typed text becomes a Robot Framework line.")
         layout.addWidget(self.empty, 1)
-        foot = QHBoxLayout(); foot.setSpacing(8)
+        # the note sits on its own full-width row above the buttons: an error can run to several lines
+        self.notice = QFrame(); self.notice.setObjectName("notice"); self.notice.setVisible(False)
+        note = QHBoxLayout(self.notice); note.setContentsMargins(10, 6, 10, 6); note.setSpacing(8)
         self.message = plain_label("", "message")
         self.message.setWordWrap(True)
-        self.status = plain_label("", "status"); self.status.setVisible(False)
-        foot.addWidget(self.status, 0, Qt.AlignmentFlag.AlignVCenter)
-        foot.addWidget(self.message, 1)
+        self.status = plain_label("", "status"); self.status.setContentsMargins(0, 4, 0, 0)
+        note.addWidget(self.status, 0, Qt.AlignmentFlag.AlignTop)
+        note.addWidget(self.message, 1)
+        layout.addWidget(self.notice)
+        foot = QHBoxLayout(); foot.setSpacing(8)
+        foot.addStretch()
         self.copy_button = QPushButton(GAP_SPACE + "Copy")
         self.copy_button.clicked.connect(lambda: QGuiApplication.clipboard().setText(self.session.robot(self.name.text())))
         save = QPushButton(GAP_SPACE + "Save")
@@ -1260,10 +1270,13 @@ class RecorderPane(QWidget):
 
     def say(self, text, key="ok"):
         """The footer note with a leading status dot (`key` is a theme colour); no text hides both."""
-        self.message.setText(text)
+        text = (text or "").strip().split("\n")[0]
+        self.message.setText(text if len(text) <= NOTE_MAX else text[:NOTE_MAX - 3].rstrip() + "...")
         self.kind = key
         self.status.setPixmap(dot_pixmap(self.t[key], 8))
-        self.status.setVisible(bool(text))
+        self.notice.setProperty("kind", key)
+        self.notice.style().unpolish(self.notice); self.notice.style().polish(self.notice)
+        self.notice.setVisible(bool(text))
 
     def show_lines(self, lines, stamp=False, pending=()):
         """The recorded lines, then the `pending` ones (steps still running), dimmed and unnumbered."""
@@ -1355,6 +1368,17 @@ class Pill(QFrame):
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton and self.property("menu"):
             self.clicked.emit()
+
+
+# Static tooltips for the device controls: what each does on the device, and the line it records.
+CONTROL_TIPS = (
+    ("launch", "launch", "Launch", "Launch the app\nStarts it fresh on the device and records Open Application."),
+    ("back", "back", "Back", "Back\nPresses the device's Back button and records Go Back. Android only."),
+    ("hide_keyboard", "keyboard", "Keyboard", "Hide the keyboard\nCloses the on-screen keyboard and records Hide Keyboard."),
+    ("screenshot", "camera", "Screenshot",
+     "Screenshot\nRecords Capture Page Screenshot: the test saves a screenshot at this step when it runs."))
+MASKED_TIP = ("Secret typing\nWhile on, what you type goes to the device but is recorded as ${PASSWORD} "
+              "and shown as dots here.")
 
 
 class MainWindow(QMainWindow):
@@ -1511,10 +1535,7 @@ class MainWindow(QMainWindow):
         box.setGraphicsEffect(QGraphicsDropShadowEffect(box))
         row = QHBoxLayout(box); row.setContentsMargins(8, 6, 8, 6); row.setSpacing(4)
         actions = []
-        for kind, name, text, tip in (("launch", "launch", "Launch", "Open Application (restarts the app)"),
-                                      ("back", "back", "Back", "Go Back (Android)"),
-                                      ("hide_keyboard", "keyboard", "Keyboard", "Hide Keyboard"),
-                                      ("screenshot", "camera", "Screenshot", "Capture Page Screenshot")):
+        for kind, name, text, tip in CONTROL_TIPS:
             action = self._iconed(QAction(text, self), name)
             action.setToolTip(tip)
             action.triggered.connect(lambda _=False, k=kind: (self.device.flush_typing(), self.submit(k, {})))
@@ -1522,7 +1543,7 @@ class MainWindow(QMainWindow):
             actions.append(action)
         self.back_action = actions[1]
         self.secret = self._iconed(QAction("Secret", self, checkable=True), "lock")
-        self.secret.setToolTip("Typed text is recorded as ${PASSWORD} and never shown")
+        self.secret.setToolTip(MASKED_TIP)
         self.secret.toggled.connect(lambda on: (setattr(self.device, "secret", on), self.device.update()))
         actions.append(self.secret)
         for action in actions:

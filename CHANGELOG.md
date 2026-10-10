@@ -6,8 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions: [Sem
 ### Added
 - Studio: `python -m MaestroLibrary.studio` (the `studio` extra: PySide6, PyAV) shows the device
   screen live (scrcpy's H.264 stream) and records a Robot test while you act on it: click, type,
-  drag, right-click assertions, toolbar steps; Inspect mode shows suggested locators and
-  attributes. A Theme menu (System, Light, Dark; remembered) and keyboard shortcuts.
+  drag, right-click assertions, control-bar steps; Inspect mode shows suggested locators and
+  attributes. On Android, touch steps go through adb and are recorded in about 0.15 s. A device
+  switcher for several connected devices, a theme button (System, Light, Dark; remembered) and
+  keyboard shortcuts.
 ### Changed
 - Python 3.12 or newer is required (3.10 reached end of life on 2026-10-01; 3.12 is supported until
   2028-10).

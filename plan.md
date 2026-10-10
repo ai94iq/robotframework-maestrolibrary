@@ -12,7 +12,7 @@ Current work: **MaestroLibrary Studio**. A native Qt (PySide6) window shows the 
 - [x] Task 4: web layer removed (`b0cf27b`); decoding spike (PyAV chosen); `FrameDecoder`, `StreamReader`, `studio` extra
 - [x] Task 5: `ActionWorker` (ordered steps off the UI thread), `source_tree`; `Session.tree` keeps the nested screen
 - [x] Task 6 code: the Qt window (impeccable Operate mode), `main()`, newest-frame live view, scid per run, `--video-encoder`
-- [ ] Task 6 device: end to end, replay, fallback, viewfinder smoothness (run at the end, per the user)
+- [x] Task 6 device: end to end 18 of 18 in the real window, replay PASS, screenshot fallback (2026-10-10)
 - [x] Task 7: README and CHANGELOG, skill line (both copies), CI (Qt offscreen on Linux, Windows, macOS; pip-audit over the extras), security pass; pushed
 - [ ] Release 0.6.0 (only when the user says so)
 
