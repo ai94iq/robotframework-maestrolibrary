@@ -3,7 +3,7 @@
 # build and twine check. The acceptance suites themselves need an Android device or emulator.
 # Studio's Qt tests run offscreen on Linux, Windows and macOS.
 # A vX.Y.Z tag also publishes to PyPI with trusted publishing (docs/distribution.md) and attaches Studio desktop
-# bundles (Windows .exe, Linux .tar.gz, macOS .dmg) to the GitHub release; run the workflow by hand to try them.
+# bundles (Windows .exe, Linux .tar.gz, macOS .dmg) to the GitHub release; every run builds and checks them.
 name: CI
 
 on:
@@ -51,7 +51,7 @@ jobs:
             MaestroLibrary.html
 
   studio:
-    # Studio's window, decoder and stream tests on the other two desktop platforms.
+    # Studio's window, decoder and stream tests on Windows and macOS (the check jobs run them on Linux).
     strategy:
       fail-fast: false   # each platform reports its own result
       matrix:
@@ -71,7 +71,7 @@ jobs:
   bundles:
     # Studio desktop bundles: an LGPL, decode-only FFmpeg (no x264 or x265), PyAV built on it, PyInstaller, and the
     # bundle's own --self-check, which fails the job on any GPL or nonfree part (packaging/build_bundle.py).
-    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    # Every push and pull request builds and checks all four; only a tag attaches them to a release.
     strategy:
       fail-fast: false
       matrix:
