@@ -6,16 +6,18 @@ import threading
 import time
 
 import av
-from PySide6.QtCore import QObject, QPointF, QRectF, QSettings, QSize, Qt, QThread, QTimer, Signal, Slot
+from PySide6.QtCore import QByteArray, QObject, QPointF, QRectF, QSettings, QSize, Qt, QThread, QTimer, Signal, Slot
 from PySide6.QtGui import (QAction, QActionGroup, QBrush, QColor, QFontDatabase, QGuiApplication, QIcon, QImage,
-                           QKeySequence, QPainter, QPainterPath, QPalette, QPen, QPixmap, QShortcut)
-from PySide6.QtWidgets import (QAbstractItemView, QApplication, QFileDialog, QFrame, QHBoxLayout, QHeaderView, QLabel,
-                               QLineEdit, QListWidget, QListWidgetItem, QMainWindow, QMenu, QPushButton, QSizePolicy,
-                               QSplitter, QTableWidget, QTableWidgetItem, QToolBar, QToolButton, QTreeWidget,
-                               QTreeWidgetItem,
-                               QVBoxLayout, QWidget, QWidgetAction)
+                           QFont, QFontMetrics, QKeySequence, QPainter, QPainterPath, QPalette, QPen, QPixmap, QShortcut)
+from PySide6.QtSvg import QSvgRenderer
+from PySide6.QtWidgets import (QAbstractItemView, QApplication, QFileDialog, QFrame, QGraphicsDropShadowEffect,
+                               QGridLayout, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QListWidget,
+                               QListWidgetItem, QMainWindow, QMenu, QPushButton, QSizePolicy, QSplitter, QStyle,
+                               QStyledItemDelegate, QStyleOptionViewItem, QTableWidget, QTableWidgetItem, QToolBar, QToolButton,
+                               QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget, QWidgetAction)
 
 from .locators import element_at, locator_candidates, parse_bounds, walk
+from .studio_icons import ICONS
 
 MAX_SIDE = 8192            # larger frames are dropped: our scrcpy-server never sends them
 
@@ -199,14 +201,14 @@ class StreamReader(QThread):
 
 # Design tokens: one set of names for both themes, so every widget and painter reads the same palette.
 THEMES = {
-    "light": {"ground": "#eef0f3", "panel": "#ffffff", "raised": "#f6f7f9", "hover": "#eceff3", "line": "#e1e4ea",
-              "ink": "#14171c", "ink2": "#5b6372", "ink3": "#9aa1ad", "accent": "#4361ee", "accent_soft": "#e4e9fd",
-              "accent_ink": "#ffffff", "rec": "#e5484d", "rec_soft": "#fde4e5", "ok": "#16a34a", "warn": "#b45309",
-              "select": "#4361ee", "screen": "#0b0d10"},
-    "dark": {"ground": "#0d0f13", "panel": "#15181e", "raised": "#1b1f27", "hover": "#222733", "line": "#272c37",
-             "ink": "#e7e9ee", "ink2": "#9ba3b1", "ink3": "#5f6775", "accent": "#7b93ff", "accent_soft": "#252d4d",
-             "accent_ink": "#0d0f13", "rec": "#ff6369", "rec_soft": "#3a1d20", "ok": "#3ecf8e", "warn": "#f5b14c",
-             "select": "#7b93ff", "screen": "#000000"},
+    "light": {"ground": "#e9ecf1", "panel": "#ffffff", "raised": "#f4f6f9", "hover": "#eceff4", "line": "#d6dae3",
+              "ink": "#14171c", "ink2": "#566070", "ink3": "#9097a5", "accent": "#4361ee", "accent_soft": "#e4e9fd",
+              "accent_ink": "#ffffff", "rec": "#e5484d", "rec_soft": "#fde4e5", "ok": "#15803d", "ok_soft": "#dcf5e5",
+              "warn": "#b45309", "warn_soft": "#fdebd0", "select": "#4361ee", "screen": "#0b0d10", "shadow_alpha": 70},
+    "dark": {"ground": "#090b0f", "panel": "#161a21", "raised": "#1d222b", "hover": "#252b36", "line": "#2e3542",
+             "ink": "#e7e9ee", "ink2": "#9ba3b1", "ink3": "#626a79", "accent": "#7b93ff", "accent_soft": "#252d4d",
+             "accent_ink": "#0d0f13", "rec": "#ff6369", "rec_soft": "#3a1d20", "ok": "#3ecf8e", "ok_soft": "#16342a",
+             "warn": "#f5b14c", "warn_soft": "#3b2d14", "select": "#7b93ff", "screen": "#000000", "shadow_alpha": 150},
 }
 THEME_MODES = ("system", "light", "dark")
 
@@ -223,23 +225,30 @@ def theme_name(app, mode="system"):
 QSS = """
 QWidget {{ color: {ink}; font-size: 13px; }}
 QMainWindow, QWidget#ground {{ background: {ground}; }}
-QFrame#card {{ background: {panel}; border: 1px solid {line}; border-radius: 12px; }}
-QToolBar#shell {{ background: {panel}; border: 0; border-bottom: 1px solid {line}; padding: 8px 12px; spacing: 4px; }}
+QFrame#card {{ background: {panel}; border: 1px solid {line}; border-radius: 14px; }}
+QToolBar#shell {{ background: {panel}; border: 0; border-bottom: 1px solid {line}; padding: 10px 16px; spacing: 8px; }}
 QToolBar#shell QToolButton {{ background: transparent; border: 1px solid transparent; border-radius: 8px;
     padding: 6px 10px; color: {ink}; }}
 QToolBar#shell QToolButton:hover {{ background: {hover}; }}
-QToolBar#shell QToolButton:checked {{ background: {accent_soft}; color: {accent}; font-weight: 600; }}
+QToolBar#shell QToolButton:checked {{ background: {accent_soft}; color: {accent}; }}
 QToolBar#shell QToolButton:disabled {{ color: {ink3}; }}
 QToolBar#shell QToolButton:focus {{ border-color: {accent}; }}
 QToolBar#shell QToolButton::menu-indicator {{ image: none; width: 0; }}
-QToolBar::separator {{ background: {line}; width: 1px; margin: 4px 8px; }}
-QLabel#product {{ font-size: 15px; font-weight: 700; padding-right: 8px; }}
-QLabel#state {{ color: {ink2}; padding-right: 6px; }}
-QLabel#pane {{ font-size: 12px; font-weight: 700; color: {ink2}; padding: 12px 14px 6px; }}
-QLabel#hint {{ color: {ink2}; padding: 6px 12px; }}
-QLabel#title {{ font-size: 15px; font-weight: 600; padding: 0 14px 8px; }}
+QToolBar::separator {{ background: {line}; width: 1px; margin: 6px 8px; }}
+QFrame#seg {{ background: {raised}; border: 1px solid {line}; border-radius: 11px; }}
+QToolBar#shell QFrame#seg QToolButton {{ border-radius: 8px; padding: 5px 14px; }}
+QToolBar#shell QFrame#seg QToolButton:hover {{ background: {hover}; }}
+QToolBar#shell QFrame#seg QToolButton:checked {{ background: {accent}; color: {accent_ink}; }}
+QFrame#pill {{ background: {raised}; border: 1px solid {line}; border-radius: 14px; }}
+QFrame#pill QLabel {{ background: transparent; }}
+QLabel#product {{ font-size: 16px; font-weight: 700; padding-right: 8px; }}
+QLabel#state {{ color: {ink}; }}
+QLabel#pane {{ font-size: 12px; font-weight: 600; color: {ink2}; }}
+QLabel#hint {{ background: {panel}; border: 1px solid {line}; border-radius: 14px; color: {ink2};
+    padding: 6px 14px; }}
+QLabel#title {{ font-size: 15px; font-weight: 600; }}
 QLabel#title[empty="true"] {{ font-size: 13px; font-weight: 400; color: {ink2}; }}
-QLabel#name_label, QLabel#empty {{ color: {ink2}; }}
+QLabel#empty {{ color: {ink2}; }}
 QPushButton {{ background: {raised}; border: 1px solid {line}; border-radius: 8px; padding: 6px 12px; }}
 QPushButton:hover {{ background: {hover}; }}
 QPushButton:pressed {{ background: {line}; }}
@@ -250,23 +259,25 @@ QPushButton#primary:hover {{ background: {select}; }}
 QLineEdit {{ background: {raised}; border: 1px solid {line}; border-radius: 8px; padding: 6px 10px;
     selection-background-color: {accent_soft}; selection-color: {ink}; }}
 QLineEdit:focus {{ border-color: {accent}; background: {panel}; }}
-QTableWidget, QTreeWidget, QListWidget {{ background: {panel}; border: 0; outline: 0; gridline-color: transparent; }}
-QTableWidget::item, QTreeWidget::item {{ padding: 4px 8px; border: 0; }}
-QListWidget::item {{ padding: 6px 10px; border-radius: 6px; margin: 1px 6px; }}
-QTableWidget::item:hover, QTreeWidget::item:hover, QListWidget::item:hover {{ background: {hover}; }}
-QTableWidget::item:selected, QTreeWidget::item:selected, QListWidget::item:selected {{
-    background: {accent_soft}; color: {ink}; }}
-QHeaderView {{ background: {panel}; }}
-QHeaderView::section {{ background: {panel}; color: {ink2}; border: 0; border-bottom: 1px solid {line};
+QLineEdit#testname {{ background: transparent; border: 1px solid transparent; font-size: 16px; font-weight: 600;
+    padding: 6px 8px; }}
+QLineEdit#testname:hover {{ border-color: {line}; }}
+QLineEdit#testname:focus {{ border-color: {accent}; background: {raised}; }}
+QTableWidget, QTreeWidget, QListWidget {{ background: transparent; border: 0; outline: 0; gridline-color: transparent; }}
+QTableWidget::item, QTreeWidget::item {{ padding: 4px 8px; border: 0; border-radius: 6px; }}
+QTableWidget::item:hover, QTreeWidget::item:hover {{ background: {hover}; }}
+QTableWidget::item:selected, QTreeWidget::item:selected {{ background: {accent_soft}; color: {ink}; }}
+QHeaderView {{ background: transparent; }}
+QHeaderView::section {{ background: transparent; color: {ink2}; border: 0; border-bottom: 1px solid {line};
     padding: 6px 8px; font-size: 12px; font-weight: 600; }}
-QTableCornerButton::section {{ background: {panel}; border: 0; }}
+QTableCornerButton::section {{ background: transparent; border: 0; }}
 QScrollBar:vertical {{ background: transparent; width: 10px; margin: 2px; }}
 QScrollBar:horizontal {{ background: transparent; height: 10px; margin: 2px; }}
 QScrollBar::handle {{ background: {line}; border-radius: 4px; min-height: 28px; min-width: 28px; }}
 QScrollBar::handle:hover {{ background: {ink3}; }}
 QScrollBar::add-line, QScrollBar::sub-line {{ width: 0; height: 0; }}
 QScrollBar::add-page, QScrollBar::sub-page {{ background: none; }}
-QSplitter::handle {{ background: {ground}; }}
+QSplitter::handle {{ background: transparent; }}
 QMenu {{ background: {panel}; border: 1px solid {line}; border-radius: 10px; padding: 6px; }}
 QMenu::item {{ padding: 7px 16px 7px 12px; border-radius: 6px; }}
 QMenu::item:selected {{ background: {accent_soft}; color: {ink}; }}
@@ -297,64 +308,48 @@ def apply_theme(app, mode="system"):
     return t
 
 
+ICON_SIZE = QSize(18, 16)              # a 16px icon plus 2px: with the style's own 4px gap the text sits 6px away
+ICON_NAMES = {"act": "mouse-pointer-click", "inspect": "scan-search", "grid": "scan", "launch": "play",
+              "back": "arrow-left", "keyboard": "keyboard", "camera": "camera", "lock": "lock", "theme": "sun-moon",
+              "record": "circle-dot", "undo": "undo-2", "clear": "trash-2", "copy": "copy", "save": "save",
+              "device": "smartphone"}
+
+
 def icon(name, color, on_color=None):
-    """Line icons drawn in one stroke weight (no font glyphs); `on_color` draws the checked state."""
+    """Lucide outline icons (studio_icons) drawn in `color`; `on_color` draws the checked state."""
     result = QIcon(_icon_pixmap(name, color))
     if on_color:
         result.addPixmap(_icon_pixmap(name, on_color), QIcon.Mode.Normal, QIcon.State.On)
     return result
 
 
-def _icon_pixmap(name, color):
-    pm = QPixmap(32, 32)
+def _icon_pixmap(name, color, size=16, gap=2):
+    """The SVG rendered at device resolution, so it is crisp on HiDPI; `gap` is blank space on the right."""
+    screen = QGuiApplication.primaryScreen()
+    ratio = max(2.0, screen.devicePixelRatio() if screen else 2.0)
+    svg = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="%s" stroke-width="2" '
+           'stroke-linecap="round" stroke-linejoin="round">%s</svg>' % (QColor(color).name(), ICONS[ICON_NAMES.get(name, name)]))
+    pm = QPixmap(round((size + gap) * ratio), round(size * ratio))
+    pm.fill(Qt.GlobalColor.transparent)
+    p = QPainter(pm)
+    QSvgRenderer(QByteArray(svg.encode())).render(p, QRectF(0, 0, size * ratio, size * ratio))
+    p.end()
+    pm.setDevicePixelRatio(ratio)
+    return pm
+
+
+def dot_pixmap(color, size=10):
+    """A filled status dot."""
+    ratio = 2
+    pm = QPixmap(size * ratio, size * ratio)
     pm.fill(Qt.GlobalColor.transparent)
     p = QPainter(pm)
     p.setRenderHint(QPainter.RenderHint.Antialiasing)
-    pen = QPen(QColor(color), 2.4, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
-    p.setPen(pen)
-    path = QPainterPath()
-    if name == "launch":
-        path.moveTo(10, 7); path.lineTo(24, 16); path.lineTo(10, 25); path.closeSubpath()
-    elif name == "back":
-        path.moveTo(19, 7); path.lineTo(10, 16); path.lineTo(19, 25)
-    elif name == "keyboard":
-        path.addRoundedRect(5, 8, 22, 13, 2, 2)
-        for x in (10, 14.5, 19, 23):
-            path.addEllipse(x - 0.6, 12.4, 1.2, 1.2)
-        path.moveTo(11, 17.5); path.lineTo(21, 17.5); path.moveTo(13, 25); path.lineTo(16, 27); path.lineTo(19, 25)
-    elif name == "camera":
-        path.moveTo(5, 11); path.lineTo(10, 11); path.lineTo(12, 8); path.lineTo(20, 8); path.lineTo(22, 11)
-        path.lineTo(27, 11); path.lineTo(27, 25); path.lineTo(5, 25); path.closeSubpath(); path.addEllipse(11.5, 12.5, 9, 9)
-    elif name == "lock":
-        path.addRoundedRect(8, 14, 16, 12, 2, 2); path.moveTo(11, 14); path.lineTo(11, 10)
-        path.arcTo(11, 5, 10, 10, 180, -180); path.lineTo(21, 14)
-    elif name == "grid":
-        path.addRoundedRect(6, 6, 20, 20, 2, 2); path.moveTo(6, 16); path.lineTo(26, 16); path.moveTo(16, 6); path.lineTo(16, 26)
-    elif name == "undo":
-        path.moveTo(12, 19); path.lineTo(6, 13); path.lineTo(12, 7); path.moveTo(6, 13); path.lineTo(19, 13)
-        path.arcTo(13, 13, 12, 12, 90, -180); path.lineTo(15, 25)
-    elif name == "clear":
-        path.moveTo(6, 10); path.lineTo(26, 10); path.moveTo(12, 10); path.lineTo(12, 6); path.lineTo(20, 6)
-        path.lineTo(20, 10); path.moveTo(9, 10); path.lineTo(10, 26); path.lineTo(22, 26); path.lineTo(23, 10)
-    elif name == "copy":
-        path.addRoundedRect(11, 11, 15, 15, 2, 2); path.moveTo(21, 11); path.lineTo(21, 6); path.lineTo(6, 6)
-        path.lineTo(6, 21); path.lineTo(11, 21)
-    elif name == "save":
-        path.moveTo(7, 6); path.lineTo(21, 6); path.lineTo(26, 11); path.lineTo(26, 26); path.lineTo(7, 26)
-        path.closeSubpath(); path.moveTo(11, 6); path.lineTo(11, 12); path.lineTo(20, 12); path.lineTo(20, 6)
-    elif name == "inspect":
-        path.addEllipse(7, 7, 13, 13); path.moveTo(18, 18); path.lineTo(26, 26)
-    elif name == "act":
-        path.moveTo(9, 6); path.lineTo(9, 24); path.lineTo(14, 19); path.lineTo(18, 27); path.lineTo(21, 26)
-        path.lineTo(17, 18); path.lineTo(24, 18); path.closeSubpath()
-    elif name == "record":
-        p.setBrush(QColor(color)); path.addEllipse(10, 10, 12, 12)
-    elif name == "theme":
-        path.addEllipse(7, 7, 18, 18)
-        half = QPainterPath(); half.moveTo(16, 7); half.arcTo(7, 7, 18, 18, 90, 180); half.closeSubpath()
-        p.fillPath(half, QColor(color))
-    p.drawPath(path)
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(QColor(color))
+    p.drawEllipse(0, 0, size * ratio, size * ratio)
     p.end()
+    pm.setDevicePixelRatio(ratio)
     return pm
 
 
@@ -579,26 +574,134 @@ def fit(table, max_rows=8):
     table.setFixedHeight(height + 2)
 
 
+def paint_background(painter, option, widget):
+    """The style's own hover and selection background (rounded by the stylesheet), without its text."""
+    opt = QStyleOptionViewItem(option)
+    opt.text = ""
+    opt.icon = QIcon()
+    (widget.style() if widget else QApplication.style()).drawControl(QStyle.ControlElement.CE_ItemViewItem, opt,
+                                                                     painter, widget)
+
+
+class MatchDelegate(QStyledItemDelegate):
+    """The Matches column: 'unique' as a small green pill, 'N matches' as an amber one. The text stays the item's."""
+
+    def __init__(self, theme, parent=None):
+        super().__init__(parent)
+        self.t = theme
+
+    def paint(self, painter, option, index):
+        paint_background(painter, option, option.widget)
+        text = index.data() or ""
+        fg, bg = (self.t["ok"], self.t["ok_soft"]) if text == "unique" else (self.t["warn"], self.t["warn_soft"])
+        font = QFont(option.font)
+        font.setPixelSize(12); font.setWeight(QFont.Weight.DemiBold)
+        width = QFontMetrics(font).horizontalAdvance(text) + 20
+        pill = QRectF(option.rect.left() + 4, 0, width, 22)
+        pill.moveCenter(QPointF(pill.center().x(), option.rect.center().y()))
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(bg))
+        painter.drawRoundedRect(pill, 11, 11)
+        painter.setPen(QColor(fg)); painter.setFont(font)
+        painter.drawText(pill, Qt.AlignmentFlag.AlignCenter, text)
+        painter.restore()
+
+    def sizeHint(self, option, index):
+        size = super().sizeHint(option, index)
+        return QSize(size.width() + 16, max(size.height(), 32))
+
+
+class LineDelegate(QStyledItemDelegate):
+    """A recorded line like Maestro's editor: number gutter, keyword, locator and other arguments in colours.
+
+    The item's text is '<n>  <robot line>'; it is parsed here for painting only."""
+
+    GUTTER = 40
+
+    def __init__(self, theme, parent=None):
+        super().__init__(parent)
+        self.t = theme
+
+    def _parts(self, index):
+        text = index.data() or ""
+        number, line = text[:3].strip(), text[5:]
+        return number, line
+
+    def paint(self, painter, option, index):
+        number, line = self._parts(index)
+        t = self.t
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        box = QRectF(option.rect).adjusted(6, 1, -6, -1)
+        state = option.state
+        fill = index.data(Qt.ItemDataRole.BackgroundRole)
+        if state & QStyle.StateFlag.State_Selected:
+            fill = QColor(t["accent_soft"])
+        elif isinstance(fill, QBrush) and fill.style() != Qt.BrushStyle.NoBrush:
+            fill = fill.color()
+        elif state & QStyle.StateFlag.State_MouseOver:
+            fill = QColor(t["hover"])
+        else:
+            fill = None
+        if fill is not None:
+            painter.setPen(Qt.PenStyle.NoPen); painter.setBrush(fill)
+            painter.drawRoundedRect(box, 6, 6)
+        painter.setFont(option.font)
+        metrics = QFontMetrics(option.font)
+        mid = Qt.AlignmentFlag.AlignVCenter | Qt.TextFlag.TextSingleLine
+        painter.setPen(QColor(t["ink3"]))
+        painter.drawText(QRectF(box.left(), box.top(), self.GUTTER - 8, box.height()),
+                         Qt.AlignmentFlag.AlignRight | mid, number)
+        x = box.left() + self.GUTTER + 4
+        parts = line.split("    ")
+        runs = [(parts[0], t["warn"] if parts[0].startswith("#") else t["accent"], True)]
+        for arg in parts[1:]:
+            if arg:
+                runs.append((arg, t["warn"] if arg.startswith("#") else t["ok"] if "\\=" in arg else t["ink"], False))
+        gap = metrics.horizontalAdvance("    ")
+        for text, color, bold in runs:
+            font = QFont(option.font)
+            font.setWeight(QFont.Weight.DemiBold if bold else QFont.Weight.Normal)
+            painter.setFont(font)
+            painter.setPen(QColor(color))
+            width = QFontMetrics(font).horizontalAdvance(text)
+            painter.drawText(QRectF(x, box.top(), width + 2, box.height()), mid, text)
+            x += width + gap
+        painter.restore()
+
+    def sizeHint(self, option, index):
+        number, line = self._parts(index)
+        metrics = QFontMetrics(option.font)
+        return QSize(self.GUTTER + 16 + metrics.horizontalAdvance(line) + 12, max(metrics.height() + 14, 30))
+
+
 class InspectorPane(QWidget):
     """Source tree and the selected element: suggested locators, attributes, actions."""
 
     act = Signal(str, dict)
     picked = Signal(object)
 
-    def __init__(self):
+    def __init__(self, theme=None):
         super().__init__()
         self.tree, self.element = None, None
-        layout = QVBoxLayout(self); layout.setContentsMargins(0, 0, 0, 0); layout.setSpacing(0)
+        layout = QVBoxLayout(self); layout.setContentsMargins(12, 12, 12, 8); layout.setSpacing(8)
         layout.addWidget(plain_label("Selected element", "pane"))
         self.title = plain_label(PICK_HINT, "title")
-        self.title.setWordWrap(True); self.title.setContentsMargins(10, 0, 10, 6)
+        self.title.setWordWrap(True)
         layout.addWidget(self.title)
         self.locators = QTableWidget(0, 2)
         self.locators.setHorizontalHeaderLabels(["Suggested locator (double-click copies)", "Matches"])
+        self.locators.setItemDelegateForColumn(1, MatchDelegate(theme or THEMES["light"], self.locators))
         self.attributes = QTableWidget(0, 2)
         self.attributes.setHorizontalHeaderLabels(["Attribute", "Value"])
         for table in (self.locators, self.attributes):
             table.verticalHeader().setVisible(False)
+            table.verticalHeader().setDefaultSectionSize(32)
+            table.setShowGrid(False)
+            table.horizontalHeader().setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+            table.setFrameShape(QFrame.Shape.NoFrame)
             table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
             table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
             table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -607,17 +710,23 @@ class InspectorPane(QWidget):
         self.locators.cellDoubleClicked.connect(lambda r, c: QGuiApplication.clipboard().setText(self.locators.item(r, 0).text()))
         layout.addWidget(self.locators)
         self.actions = QWidget()
-        actions = QHBoxLayout(self.actions); actions.setContentsMargins(8, 6, 8, 6)
-        for kind, text in (("click", "Tap"), ("long_press", "Long press"), ("wait_visible", "Wait visible"),
-                           ("should_be_visible", "Should be visible"), ("text_should_be", "Text should be")):
+        actions = QGridLayout(self.actions); actions.setContentsMargins(0, 0, 0, 0)
+        actions.setHorizontalSpacing(8); actions.setVerticalSpacing(8)
+        for number, (kind, text) in enumerate((("click", "Tap"), ("long_press", "Long press"),
+                                               ("wait_visible", "Wait visible"),
+                                               ("should_be_visible", "Should be visible"),
+                                               ("text_should_be", "Text should be"))):
             button = QPushButton(text)
             button.clicked.connect(lambda _=False, k=kind: self._act(k))
-            actions.addWidget(button)
+            actions.addWidget(button, number // 3, number % 3)
         layout.addWidget(self.actions)
         layout.addWidget(self.attributes)
         layout.addWidget(plain_label("Source (system UI and unlabeled containers left out)", "pane"))
         self.source = QTreeWidget()
+        self.source.setFrameShape(QFrame.Shape.NoFrame)
         self.source.setHeaderLabels(["Element", "Class"])
+        self.source.setIndentation(16)
+        self.source.header().setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         self.source.header().setStretchLastSection(False)
         self.source.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.source.header().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
@@ -688,15 +797,20 @@ class InspectorPane(QWidget):
 
 
 class RecorderPane(QWidget):
-    """The recorded Robot lines, with Record, Undo, Clear, Copy and Save."""
+    """The recorded Robot lines under an editable test title, with Record, Undo, Clear, Copy and Save."""
 
     edit = Signal(str)                  # "undo" or "clear", run on the worker thread
 
     def __init__(self, session, theme):
         super().__init__()
         self.session, self.t = session, theme
-        layout = QVBoxLayout(self); layout.setContentsMargins(0, 0, 0, 0); layout.setSpacing(0)
-        head = QHBoxLayout(); head.setContentsMargins(10, 6, 10, 6)
+        layout = QVBoxLayout(self); layout.setContentsMargins(12, 12, 12, 12); layout.setSpacing(8)
+        self.name = QLineEdit("Recorded Test")
+        self.name.setObjectName("testname")
+        self.name.setPlaceholderText("Untitled test")
+        self.name.setAccessibleName("Test name")
+        layout.addWidget(self.name)
+        head = QHBoxLayout(); head.setSpacing(8); head.setContentsMargins(9, 0, 0, 0)
         head.addWidget(plain_label("Recorded steps", "pane")); head.addStretch()
         self.record_button = QPushButton("Recording")
         self.record_button.setCheckable(True); self.record_button.setChecked(True)
@@ -704,38 +818,43 @@ class RecorderPane(QWidget):
         self.undo_button = QPushButton("Undo")
         self.undo_button.setToolTip("Removes the last line; the action on the device is not undone")
         self.clear_button = QPushButton("Clear")
-        copy = QPushButton("Copy")
         self.undo_button.clicked.connect(lambda: self.edit.emit("undo"))
         self.clear_button.clicked.connect(lambda: self.edit.emit("clear"))
-        copy.clicked.connect(lambda: QGuiApplication.clipboard().setText(self.session.robot(self.name.text())))
-        for button in (self.record_button, self.undo_button, self.clear_button, copy):
+        for button in (self.record_button, self.undo_button, self.clear_button):
             head.addWidget(button)
         layout.addLayout(head)
         self.lines = QListWidget()
+        self.lines.setFrameShape(QFrame.Shape.NoFrame)
         self.lines.setFont(QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont))
-        self.lines.setWordWrap(True)
+        self.lines.setItemDelegate(LineDelegate(theme, self.lines))
+        self.lines.setHorizontalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        self.lines.setMouseTracking(True)
         self.lines.setToolTip("Delete removes the selected line")
         QShortcut(QKeySequence(Qt.Key.Key_Delete), self.lines, activated=self._remove_selected)
         layout.addWidget(self.lines, 1)
         self.empty = plain_label("Act on the device: each step becomes a Robot Framework line here.", "empty")
-        self.empty.setContentsMargins(10, 6, 10, 6); self.empty.setWordWrap(True)
+        self.empty.setWordWrap(True)
         layout.addWidget(self.empty)
-        foot = QHBoxLayout(); foot.setContentsMargins(10, 6, 10, 10)
-        foot.addWidget(plain_label("Test name", "name_label"))
-        self.name = QLineEdit("Recorded Test")
-        foot.addWidget(self.name, 1)
-        save = QPushButton("Save...")
+        foot = QHBoxLayout(); foot.setSpacing(8)
+        foot.addStretch()
+        self.copy_button = QPushButton("Copy")
+        self.copy_button.clicked.connect(lambda: QGuiApplication.clipboard().setText(self.session.robot(self.name.text())))
+        save = QPushButton("Save .robot")
         save.setObjectName("primary")
         save.clicked.connect(self.save)
-        foot.addWidget(save)
+        foot.addWidget(self.copy_button); foot.addWidget(save)
         layout.addLayout(foot)
         self.icons = [(self.record_button, "record", "rec"), (self.undo_button, "undo", "ink2"),
-                      (self.clear_button, "clear", "ink2"), (copy, "copy", "ink2"), (save, "save", "accent_ink")]
+                      (self.clear_button, "clear", "ink2"), (self.copy_button, "copy", "ink2"),
+                      (save, "save", "accent_ink")]
+        for button, _, _ in self.icons:
+            button.setIconSize(ICON_SIZE)
         self.retheme()
 
     def retheme(self):
         for button, name, key in self.icons:
             button.setIcon(icon(name, self.t[key]))
+        self.lines.viewport().update()
 
     def _remove_selected(self):
         row = self.lines.currentRow()
@@ -750,8 +869,6 @@ class RecorderPane(QWidget):
         self.lines.clear()
         for number, line in enumerate(lines, 1):
             item = QListWidgetItem(f"{number:>3}  {line}")
-            if "# GAP" in line:
-                item.setForeground(QColor(self.t["warn"]))
             self.lines.addItem(item)
         self.empty.setVisible(not lines)
         if stamp and lines:
@@ -775,47 +892,61 @@ ACT_HINT = "Act: click to tap - drag to swipe - type, then Enter - right-click t
 INSPECT_HINT = "Inspect: click to select (nothing runs on the device) - Ctrl+1 returns to Act"
 
 
-def card(widget):
-    """A pane on the window's gutter: a rounded panel with a hairline border."""
+def card(widget, theme):
+    """A pane on the window's ground: a rounded panel with a hairline border and a soft drop shadow.
+
+    The pane is inset by the corner radius' worth of margin, so its square widgets never cover the rounded corners."""
     frame = QFrame()
     frame.setObjectName("card")
     layout = QVBoxLayout(frame)
-    layout.setContentsMargins(1, 1, 1, 1)
+    layout.setContentsMargins(6, 6, 6, 6)
     layout.addWidget(widget)
+    effect = QGraphicsDropShadowEffect(frame)
+    effect.setBlurRadius(28)
+    effect.setOffset(0, 6)
+    frame.setGraphicsEffect(effect)
+    shade(frame, theme)
     return frame
+
+
+def shade(frame, theme):
+    frame.graphicsEffect().setColor(QColor(0, 0, 0, theme["shadow_alpha"]))
 
 
 class MainWindow(QMainWindow):
     def __init__(self, session, worker, device_name="", platform="android", settings=None):
         super().__init__()
         self.session, self.worker, self.platform = session, worker, platform
-        self.live, self.pending, self._icons = False, 0, []
+        self.live, self.pending, self._icons, self._cards = False, 0, [], []
         self.settings = settings if settings is not None else QSettings("MaestroLibrary", "Studio")
         mode = self.settings.value("theme", "system")
         self.theme_mode = mode if mode in THEME_MODES else "system"
         self.t = apply_theme(QApplication.instance(), self.theme_mode)
         self.setWindowTitle(f"MaestroLibrary Studio - {device_name} (keep Robot runs off this device while it is open)")
         self.device = DeviceView(self.t)
-        self.inspector = InspectorPane()
+        self.inspector = InspectorPane(self.t)
         self.recorder = RecorderPane(session, self.t)
         self._toolbar(device_name)
         device_pane = QWidget()
-        column = QVBoxLayout(device_pane); column.setContentsMargins(0, 0, 0, 8); column.setSpacing(0)
+        column = QVBoxLayout(device_pane); column.setContentsMargins(0, 0, 0, 0); column.setSpacing(8)
         column.addWidget(self.device, 1)
         self.hint = plain_label(ACT_HINT, "hint")
         self.hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.hint.setWordWrap(True)
-        column.addWidget(self.hint)
+        chip = QHBoxLayout()                # a chip as wide as its text, centred under the phone
+        chip.addStretch(); chip.addWidget(self.hint); chip.addStretch()
+        column.addLayout(chip)
         device_pane.setMinimumWidth(440)
         split = QSplitter()
-        split.setHandleWidth(10)
-        for widget, stretch in ((device_pane, 4), (card(self.inspector), 3), (card(self.recorder), 3)):
+        split.setHandleWidth(16)
+        self._cards = [card(self.inspector, self.t), card(self.recorder, self.t)]
+        for widget, stretch in ((device_pane, 4), (self._cards[0], 3), (self._cards[1], 3)):
             split.addWidget(widget)
             split.setStretchFactor(split.count() - 1, stretch)
         split.setSizes([580, 420, 480])                  # the device screen leads
         split.setChildrenCollapsible(False)
         ground = QWidget(); ground.setObjectName("ground")
-        outer = QVBoxLayout(ground); outer.setContentsMargins(10, 10, 10, 10)
+        outer = QVBoxLayout(ground); outer.setContentsMargins(16, 16, 16, 16)
         outer.addWidget(split)
         self.setCentralWidget(ground)
         self.hover = plain_label("", "hover")
@@ -839,6 +970,7 @@ class MainWindow(QMainWindow):
         self.poll.timeout.connect(lambda: worker.poll.emit() if not self.pending else None)
         self.poll.start(5000)                 # each read waits for the screen to settle (up to 3 s)
         self.recorder.show_lines(session.lines)
+        self.device.setFocus()                # typing goes to the phone; no toolbar button starts focused
         for keys, slot in (("Ctrl+1", self.act_mode.trigger), ("Ctrl+2", self.inspect_mode.trigger),
                            ("Ctrl+Z", lambda: worker.edit.emit("undo")), ("Ctrl+S", self.recorder.save)):
             QShortcut(QKeySequence(keys), self, activated=slot)
@@ -846,23 +978,32 @@ class MainWindow(QMainWindow):
     def _toolbar(self, device_name):
         bar = QToolBar("Studio"); bar.setObjectName("shell"); bar.setMovable(False)
         bar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-        bar.setIconSize(QSize(16, 16))
+        bar.setIconSize(ICON_SIZE)
         self.addToolBar(bar)
         bar.addWidget(plain_label("MaestroLibrary Studio", "product"))
+        pill = QFrame(); pill.setObjectName("pill")
+        row = QHBoxLayout(pill); row.setContentsMargins(10, 4, 12, 4); row.setSpacing(6)
+        self.device_icon = plain_label("", "device_icon")
         self.dot = plain_label("", "dot")
-        bar.addWidget(self.dot)
         self.state = plain_label(f"{device_name}: connecting", "state")
-        bar.addWidget(self.state)
+        for widget in (self.device_icon, self.dot, self.state):
+            row.addWidget(widget)
+        bar.addWidget(pill)
         self._dot("ink3")
-        bar.addSeparator()
         modes = QActionGroup(self); modes.setExclusive(True)
-        self.act_mode = self._iconed(QAction("Act", self, checkable=True, checked=True), "act")
+        self.act_mode = self._iconed(QAction("Act", self, checkable=True, checked=True), "act", on="accent_ink")
         self.act_mode.setToolTip("Click, drag and type act on the device and are recorded")
-        self.inspect_mode = self._iconed(QAction("Inspect", self, checkable=True), "inspect")
+        self.inspect_mode = self._iconed(QAction("Inspect", self, checkable=True), "inspect", on="accent_ink")
         self.inspect_mode.setToolTip("Click selects an element; nothing runs on the device")
+        seg = QFrame(); seg.setObjectName("seg")
+        segment = QHBoxLayout(seg); segment.setContentsMargins(3, 3, 3, 3); segment.setSpacing(2)
         for action, mode in ((self.act_mode, "act"), (self.inspect_mode, "inspect")):
-            modes.addAction(action); bar.addAction(action)
+            modes.addAction(action)
+            button = QToolButton(); button.setDefaultAction(action)
+            button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon); button.setIconSize(ICON_SIZE)
+            segment.addWidget(button)
             action.triggered.connect(lambda _=False, m=mode: self._mode(m))
+        bar.addWidget(seg)
         self.handles = self._iconed(QAction("Elements", self, checkable=True), "grid")
         self.handles.setToolTip("Outline every element a locator can find")
         self.handles.toggled.connect(lambda on: (setattr(self.device, "handles", on), self.device.update()))
@@ -896,6 +1037,7 @@ class MainWindow(QMainWindow):
         self.theme_button.setText("Theme")
         self.theme_button.setToolTip("Theme: follow the system, or always light or dark")
         self.theme_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.theme_button.setIconSize(ICON_SIZE)
         self.theme_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         self.theme_button.setMenu(themes)
         self._iconed(self.theme_button, "theme")
@@ -935,10 +1077,10 @@ class MainWindow(QMainWindow):
         self.message.setText(text)
         self.message.setStyleSheet(f"color: {self.t['rec']};")       # stays until the next step works
 
-    def _iconed(self, target, name, key="ink2"):
-        """Gives an action or button a theme-following icon whose checked state uses the accent."""
-        self._icons.append((target, name, key))
-        target.setIcon(icon(name, self.t[key], self.t["accent"]))
+    def _iconed(self, target, name, key="ink2", on="accent"):
+        """Gives an action or button a theme-following icon whose checked state uses `on` (the accent)."""
+        self._icons.append((target, name, key, on))
+        target.setIcon(icon(name, self.t[key], self.t[on]))
         return target
 
     def set_theme(self, mode):
@@ -947,8 +1089,10 @@ class MainWindow(QMainWindow):
         self.settings.setValue("theme", mode)
         self.t.clear()
         self.t.update(apply_theme(QApplication.instance(), mode))      # the panes share this dict
-        for target, name, key in self._icons:
-            target.setIcon(icon(name, self.t[key], self.t["accent"]))
+        for target, name, key, on in self._icons:
+            target.setIcon(icon(name, self.t[key], self.t[on]))
+        for frame in self._cards:
+            shade(frame, self.t)
         self.theme_actions[mode].setChecked(True)
         self.recorder.retheme()
         self.recorder.show_lines(self.session.lines)
@@ -956,7 +1100,8 @@ class MainWindow(QMainWindow):
         self.device.update()
 
     def _dot(self, key):
-        self.dot.setPixmap(icon("record", self.t[key]).pixmap(14, 14))
+        self.dot.setPixmap(dot_pixmap(self.t[key]))
+        self.device_icon.setPixmap(_icon_pixmap("device", self.t["ink2"], gap=0))
 
     def show_newest(self, reader):
         image, _ = reader.take()

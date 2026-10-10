@@ -29,7 +29,7 @@ python -m bandit -q -c pyproject.toml -r src
 
 ## Next
 
-- UI redesign from the user review (2026-10-10), to be written by a Sonnet subagent and reviewed before commit; the spec was drafted and the run stopped at the usage limit with no changes. Points: icons not aligned with text and dated (use Lucide outline SVGs, vendored, ISC); buttons touching (8 px gaps, Act/Inspect pill segmented control); cards rounded at the bottom too; stronger panel contrast and real shadows; test name as an editable title at the top of the recorder with right-aligned Copy and Save; code-editor style recorder (line gutter, syntax colours); device pill. References: Maestro Studio and Google Artemis screenshots.
+- UI redesign done (Lucide 1.55.0 icons, segmented mode control, contrasted cards with shadows, recorder title and action row, code-style recorder, match pills); waiting for the user's look. Known: long recorder lines scroll instead of wrapping; the device pill reads "SER: live".
 - Then one device batch: end to end, replay, fallback.
 
 - Device runs at the end: end to end (make the harness read element positions from the window's own tree, not Maestro on the UI thread), replay of the saved test, fallback without scrcpy.
