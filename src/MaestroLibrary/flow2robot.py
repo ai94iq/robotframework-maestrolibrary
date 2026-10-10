@@ -106,14 +106,18 @@ def _step(command, app_id):
     return None
 
 
-def escape(arg):
-    """Escapes what Robot would read as a separator, escape, comment, named argument or empty cell.
+def escape(arg, keep_variables=True):
+    """Escapes what Robot would read as a separator, escape, comment, named argument, variable or empty cell.
 
-    ``${name}`` is left as it is, so Maestro's variables become Robot variables to define.
+    With `keep_variables`, a plain ``${name}`` stays, so Maestro's variables become Robot variables
+    to define. Every other variable syntax is escaped: ``${{ }}`` would run Python when the test runs.
     """
     if arg == "":
         return "${EMPTY}"
-    arg = re.sub(r"^(\w+)=", r"\1\\=", arg.replace("\\", "\\\\"))
+    arg = arg.replace("\\", "\\\\")
+    arg = re.sub(r"[$@&%]\{", lambda m: m.group() if keep_variables and re.match(r"\$\{\w+\}", m.string[m.start():])
+                 else "\\" + m.group(), arg)
+    arg = re.sub(r"^(\w+)=", r"\1\\=", arg)
     arg = re.sub(r" {2,}", lambda m: " " + "\\ " * (len(m.group()) - 1), arg)
     if arg.startswith((" ", "#")):
         arg = "\\" + arg

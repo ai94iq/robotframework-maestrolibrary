@@ -1,6 +1,7 @@
 import os
 import sys
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
@@ -36,6 +37,129 @@ class LocatorTest(unittest.TestCase):
         self.assertEqual(locator_candidates(SCREEN[2], SCREEN), [("text=Apps", 2)])
         self.assertEqual(locator_candidates(SCREEN[1], SCREEN),
                          [("id=com.app:id/search", 1), ("text=Search", 1)])
+
+
+class FakeLib:
+    def __init__(self, elements):
+        self._elements, self.ran, self.app_id, self.fail = elements, [], "com.app", None
+
+    def elements(self):
+        return self._elements
+
+    def run_keyword(self, name, args, kwargs=None):
+        if self.fail:
+            raise AssertionError(self.fail)
+        self.ran.append((name, list(args)))
+
+    def run_commands(self, *commands, app_id=None, log=True):
+        self.ran.append(("run_commands", list(commands), log))
+
+
+class SessionTest(unittest.TestCase):
+    def setUp(self):
+        from MaestroLibrary.studio import Session
+        self.lib = FakeLib(SCREEN)
+        self.s = Session(self.lib)
+
+    def test_click_runs_and_records(self):
+        self.assertEqual(self.s.act("click", 500, 200), r"Click Element    id\=com.app:id/search")
+        self.assertEqual(self.lib.ran, [("click_element", ["id=com.app:id/search"])])
+
+    def test_no_unique_locator_records_point_with_gap(self):
+        self.assertEqual(self.s.act("click", 540, 500),
+                         r"Click Element    point\=50%,21%    # GAP: no unique locator, ask for a test id")
+        self.assertEqual(self.lib.ran, [("click_element", ["point=50%,21%"])])
+
+    def test_blank_space_records_point(self):
+        self.assertTrue(self.s.act("click", 500, 2300).startswith(r"Click Element    point\=46%,96%"))
+
+    def test_typing_after_click_merges_into_input_text(self):
+        self.s.act("click", 500, 200)
+        self.s.act("type", text="wifi")
+        self.assertEqual(self.s.lines, [r"Input Text    id\=com.app:id/search    wifi"])
+        self.assertEqual(self.lib.ran[-1], ("input_text_into_current_element", ["wifi"]))
+
+    def test_typing_without_click_types_into_current_element(self):
+        self.s.act("back")
+        self.s.act("type", text="wifi")
+        self.assertEqual(self.s.lines, ["Go Back", "Input Text Into Current Element    wifi"])
+
+    def test_secret_typing_is_never_logged_or_recorded(self):
+        self.s.act("click", 500, 200)
+        line = self.s.act("type", text="hunter2", secret=True)
+        self.assertEqual(self.s.lines, [r"Input Password    id\=com.app:id/search    ${PASSWORD}"])
+        self.assertEqual(self.lib.ran[-1], ("run_commands", [{"inputText": "hunter2"}], False))
+        self.assertNotIn("hunter2", line)
+
+    def test_maestro_js_in_typed_text_is_refused(self):
+        with self.assertRaisesRegex(ValueError, "JavaScript"):
+            self.s.act("type", text="${1+1}")
+        with self.assertRaisesRegex(ValueError, "JavaScript"):
+            self.s.act("text_should_be", 500, 200, text="${output.x}")
+        self.assertEqual(self.lib.ran, [])
+
+    def test_device_text_cannot_inject_robot_code(self):
+        from MaestroLibrary.studio import Session
+        evil = [{"b": "[0,0][1080,2400]"}, {"b": "[0,0][100,100]", "txt": "${{__import__('os').getcwd()}}"}]
+        line = Session(FakeLib(evil)).act("click", 50, 50)
+        self.assertEqual(line, r"Click Element    text\=\${{__import__('os').getcwd()}}")
+
+    def test_newlines_cannot_add_robot_sections(self):
+        self.s.act("type", text="a\n*** Settings ***\nLibrary  OperatingSystem")
+        self.assertEqual(self.s.robot("T").count("\n"), 6)
+        self.assertEqual(self.s.lines,
+                         [r"Input Text Into Current Element    a\n*** Settings ***\nLibrary \ OperatingSystem"])
+
+    def test_failure_records_nothing(self):
+        self.lib.fail = "Element not found"
+        with self.assertRaisesRegex(AssertionError, "not found"):
+            self.s.act("click", 500, 200)
+        self.assertEqual(self.s.lines, [])
+
+    def test_unknown_kind_is_refused(self):
+        with self.assertRaises(ValueError):
+            self.s.act("__import__")
+        self.assertEqual(self.lib.ran, [])
+
+    def test_swipe_toolbar_and_assertions(self):
+        self.s.act("swipe", 540, 1800, 540, 600)
+        self.s.act("back")
+        self.s.act("text_should_be", 500, 200, text="Search")
+        self.assertEqual(self.s.lines, ["Swipe By Percent    50    75    50    25", "Go Back",
+                                        r"Element Text Should Be    id\=com.app:id/search    Search"])
+
+    def test_launch_uses_app_id(self):
+        self.assertEqual(self.s.act("launch"), "Open Application    com.app")
+
+    def test_recording_off_runs_but_records_nothing(self):
+        self.s.recording = False
+        self.assertIsNone(self.s.act("back"))
+        self.assertEqual(self.s.lines, [])
+        self.assertEqual(self.lib.ran, [("go_back", [])])
+
+    def test_stale_tree_refreshes(self):
+        calls = []
+        self.lib.elements = lambda: calls.append(1) or SCREEN
+        with mock.patch("MaestroLibrary.studio.time.monotonic", side_effect=[0, 0.5, 5, 5]):
+            self.s.tree(); self.s.tree(); self.s.tree()    # fetched at 0; 0.5 s old: kept; 5 s old: fetched
+        self.assertEqual(len(calls), 2)
+
+    def test_undo_clear_and_robot_file(self):
+        self.s.act("back"); self.s.act("hide_keyboard"); self.s.undo()
+        self.assertEqual(self.s.robot("My Test"),
+                         "*** Settings ***\nLibrary    MaestroLibrary\n\n*** Test Cases ***\nMy Test\n    Go Back\n")
+        self.s.clear()
+        self.assertEqual(self.s.lines, [])
+
+
+class EscapeTest(unittest.TestCase):
+    def test_flow2robot_keeps_only_plain_variables(self):
+        from MaestroLibrary.flow2robot import escape
+        self.assertEqual(escape("${USER}"), "${USER}")
+        self.assertEqual(escape("${{1}}"), r"\${{1}}")
+        self.assertEqual(escape("%{HOME}"), r"\%{HOME}")
+        self.assertEqual(escape("@{x} &{y}"), r"\@{x} \&{y}")
+        self.assertEqual(escape("${USER}", keep_variables=False), r"\${USER}")
 
 
 if __name__ == "__main__":
