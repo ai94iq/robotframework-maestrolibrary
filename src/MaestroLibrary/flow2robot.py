@@ -41,8 +41,10 @@ def _step(command, app_id):
     """Returns the keyword and arguments for one Maestro command, or None when there is no keyword."""
     if isinstance(command, str):
         name, arg = command, None
-    else:
+    elif isinstance(command, dict) and len(command) == 1:
         (name, arg), = command.items()
+    else:
+        return None
     simple = {"back": "Go Back", "hideKeyboard": "Hide Keyboard"}
     if name in simple and arg is None:
         return [simple[name]]
@@ -91,14 +93,14 @@ def _step(command, app_id):
     if name == "openLink" and isinstance(arg, str):
         return ["Go To Url", arg]
     if name == "takeScreenshot" and isinstance(arg, str):
-        return ["Capture Page Screenshot", f"{arg}.png"]
+        return ["Capture Page Screenshot", f"{arg}.jpg"]   # the library saves JPEG data
     if name == "waitForAnimationToEnd":
         if arg is None:
             return ["Wait For Animation To End"]
         if isinstance(arg, dict) and set(arg) == {"timeout"}:
             return ["Wait For Animation To End", ("timeout", _seconds(arg["timeout"]))]
     if name == "runFlow" and isinstance(arg, str):
-        return ["Run Flow", "${CURDIR}/" + arg]
+        return ["Run Flow", arg if os.path.isabs(arg) else "${CURDIR}/" + arg]
     if name == "setLocation" and isinstance(arg, dict) and set(arg) == {"latitude", "longitude"}:
         return ["Set Location", str(arg["latitude"]), str(arg["longitude"])]
     return None

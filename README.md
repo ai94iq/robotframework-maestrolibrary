@@ -170,11 +170,49 @@ which attributes `Get Element Attribute` sees, and how `id=` matches.
 Record a flow in Maestro Studio, save its YAML, and convert it to a Robot test:
 ```
 pip install "robotframework-maestrolibrary[convert]"
-python -m MaestroLibrary.flow2robot login.yaml > login.robot
+python -m MaestroLibrary.flow2robot settings_search.yaml > settings_search.robot
 ```
+A Studio flow such as
+```yaml
+appId: com.android.settings
+---
+- launchApp
+- assertVisible: "Search Settings"
+- tapOn:
+    text: "Apps"
+    index: 0
+- back
+- tapOn:
+    id: "com.android.settings:id/search_action_bar"
+- inputText: "wifi"
+- takeScreenshot: search
+- hideKeyboard
+- back
+- stopApp
+```
+becomes
+```robotframework
+*** Settings ***
+Library    MaestroLibrary
+
+*** Test Cases ***
+Settings Search
+    Open Application    com.android.settings
+    Wait Until Page Contains Element    text\=Search Settings
+    Run Flow    - {tapOn: {text: Apps, index: 0}}
+    Go Back
+    Input Text    id_regex\=com.android.settings:id/search_action_bar    wifi
+    Capture Page Screenshot    search.jpg
+    Hide Keyboard
+    Go Back
+    Terminate Application    com.android.settings
+```
+(`\=` keeps Robot from reading `id=...` as a named argument.)
+
 Commands with a keyword become that keyword (`tapOn` then `inputText` becomes one `Input Text`);
 the rest, such as a selector with `index`, become an inline `Run Flow` line. Maestro matches text
-as a regular expression, so text with regex characters comes out as `regex=`. Move the locators
+as a regular expression, so a value with regex characters (an id with dots, too) comes out as
+`regex=` or `id_regex=`, which keeps its meaning. Move the locators
 into variables before the test joins a suite.
 
 ## Maestro CLI coverage

@@ -49,6 +49,14 @@ class Flow2RobotTest(unittest.TestCase):
         self.assertEqual(to_locator({"point": "50%,50%"}), "point=50%,50%")
         self.assertIsNone(to_locator({"text": "OK", "index": 0}))
 
+    def test_edge_commands(self):
+        steps = convert("- takeScreenshot: home\n- runFlow: sub/login.yaml\n- {tapOn: A, back: null}\n")
+        self.assertEqual(steps.splitlines()[5:], [
+            "    Capture Page Screenshot    home.jpg",
+            "    Run Flow    ${CURDIR}/sub/login.yaml",
+            "    Run Flow    - {tapOn: A, back: null}",
+        ])
+
     def test_escape(self):
         self.assertEqual(escape(""), "${EMPTY}")
         self.assertEqual(escape("a   b "), "a \\ \\ b\\ ")
