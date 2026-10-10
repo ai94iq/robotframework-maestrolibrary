@@ -12,6 +12,7 @@ from .keywords import ApplicationManagementKeywords, DeviceKeywords, ElementKeyw
 from .locators import matches, walk
 from .android import Logcat, Mirror
 from .mcp import MaestroError, MaestroMCP, verified_exe
+from .recorder import FlowRecorder
 
 __version__ = "0.4.2"
 NO_APP = "maestro.no.app"
@@ -96,6 +97,7 @@ class MaestroLibrary(DynamicCore):
         speed: timedelta = timedelta(0),
         logcat: bool = True,
         mirror: bool = False,
+        record_flows: bool = False,
     ):
         """`device` is a Maestro device id such as ``emulator-5554``. By default the first
         connected device is used. `maestro` is the Maestro CLI executable.
@@ -109,6 +111,12 @@ class MaestroLibrary(DynamicCore):
 
         `mirror` opens a scrcpy window showing the Android device when the device is first used,
         and closes it when the run ends. A failure to start it is a warning.
+
+        `record_flows` writes the Maestro commands each test sends to ``flows/<n>-<test>.yaml`` in
+        the output directory, linked in the log: a flow that ``maestro test`` can replay. Checks
+        made on a screen snapshot (`Page Should Contain Element`, `Get Text`, ...), screenshots,
+        adb and Python steps are not Maestro commands and are not in it. `Input Password` is
+        recorded as ``${PASSWORD}``.
         """
         self.timeout = timeout
         self.speed = speed
@@ -127,6 +135,7 @@ class MaestroLibrary(DynamicCore):
             atexit.register(self.logcat.stop)
         self.screen_mirror = Mirror()
         self.mirror_at_start = mirror
+        self.recorder = FlowRecorder() if record_flows else None
         atexit.register(self.screen_mirror.stop)
         DynamicCore.__init__(self, [
             ApplicationManagementKeywords(self),
@@ -258,6 +267,8 @@ class MaestroLibrary(DynamicCore):
         body = "\n".join(f"- {json.dumps(command)}" for command in commands)
         if log:
             logger.debug(f"Maestro flow:\n{body}")
+        if self.recorder:
+            self.recorder.commands(app_id or self.app_id or NO_APP, commands, secret=not log)
         if self.speed:
             time.sleep(self.speed.total_seconds())
         # A wait or scroll may legitimately take longer than the default; allow its own timeout.
@@ -266,9 +277,13 @@ class MaestroLibrary(DynamicCore):
         self._run({"yaml": header + body}, None, max([MCP_TIMEOUT_S] + [w / 1000 + 60 for w in waits]))
 
     def run_yaml(self, yaml, env=None):
+        if self.recorder:
+            self.recorder.yaml(self.app_id or NO_APP, yaml, env)
         self._run({"yaml": yaml}, env, FLOW_TIMEOUT_S)
 
     def run_files(self, files, env=None):
+        if self.recorder:
+            self.recorder.files(self.app_id or NO_APP, files, env)
         self._run({"files": files}, env, FLOW_TIMEOUT_S)
 
     def run_dir(self, path, env=None, include_tags=None, exclude_tags=None):
@@ -277,6 +292,8 @@ class MaestroLibrary(DynamicCore):
             flow["include_tags"] = include_tags
         if exclude_tags is not None:
             flow["exclude_tags"] = exclude_tags
+        if self.recorder:
+            self.recorder.record(self.app_id or NO_APP, [f"# Run Flow {path} (a directory) is not recorded"])
         self._run(flow, env, FLOW_TIMEOUT_S)
 
     def _run(self, flow, env, timeout):

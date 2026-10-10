@@ -7,6 +7,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions: [Sem
 - `python -m MaestroLibrary.flow2robot flow.yaml` converts a Maestro flow, such as one recorded in
   Maestro Studio, to a Robot test; commands without a keyword become an inline `Run Flow`. Needs
   the `convert` extra (PyYAML).
+- `record_flows=True` import argument: each test's Maestro commands are written to
+  `flows/<n>-<test>.yaml`, a flow `maestro test` replays; `Input Password` is recorded as
+  `${PASSWORD}`.
 
 ## [0.4.2] - 2026-10-09
 ### Changed

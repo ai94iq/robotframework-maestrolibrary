@@ -166,7 +166,7 @@ WIP, written from Maestro's and Apple's docs, needs testing on a simulator:
 Not checked on iOS yet: Kill Application, permission names for `Set Application Permissions`,
 which attributes `Get Element Attribute` sees, and how `id=` matches.
 
-## Converting Maestro Studio flows
+## Converting between Maestro flows and Robot tests
 Record a flow in Maestro Studio, save its YAML, and convert it to a Robot test:
 ```
 pip install "robotframework-maestrolibrary[convert]"
@@ -214,6 +214,19 @@ the rest, such as a selector with `index`, become an inline `Run Flow` line. Mae
 as a regular expression, so a value with regex characters (an id with dots, too) comes out as
 `regex=` or `id_regex=`, which keeps its meaning. Move the locators
 into variables before the test joins a suite.
+
+### Robot tests to Maestro flows
+A Robot test is only a flow once it runs: variables, loops and user keywords resolve at run time.
+So the library records instead of converting. With `record_flows=True`, every Maestro command a
+test sends goes to `flows/<n>-<test>.yaml` in the output directory, linked in the log:
+```
+robot -v RECORD:True -d results tests/      # Library  MaestroLibrary  record_flows=${RECORD}
+maestro test -e PASSWORD=... results/flows/1-Log_In.yaml
+```
+Loops come out unrolled and `Run Flow` lines are kept; `Input Password` is recorded as
+`${PASSWORD}`. Snapshot checks (`Page Should Contain Element`, `Get Text`, ...), screenshots, adb
+and Python steps are not Maestro commands, so they are not in the flow; waiting checks such as
+`Wait Until Page Contains Element` are (`extendedWaitUntil`).
 
 ## Maestro CLI coverage
 The library talks to `maestro mcp`. What the other `maestro` subcommands do, and where it lives here:
