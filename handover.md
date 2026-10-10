@@ -3,7 +3,8 @@
 ## State (2026-10-10)
 
 - `main` is at the 0.5.0 release plus unreleased Studio work. The Studio core is done: `locators.py` (hit testing, locator choice), `studio.Session` and `stream.ScrcpyStream`.
-- `studio.py` still holds revision 1's HTTP server (`make_server`) and `studio.html` still ships. Task 4 removes both for the Qt window.
+- The web layer is gone. `studio_qt.py` has `FrameDecoder` (PyAV H.264 to QImage) and `StreamReader` (QThread). The window, `ActionWorker` and `main()` come next (Tasks 5 and 6), so `python -m MaestroLibrary.studio` does nothing yet.
+- `pip install -e ".[studio]"` installs PySide6 6.12.0 and av 19.0.1.
 - Python floor 3.12 (CHANGELOG Unreleased > Changed).
 
 ## Run
@@ -20,11 +21,12 @@ python -m bandit -q -c pyproject.toml -r src
 - On the phone (Samsung A70, Android 15), 2026-10-10:
   - `ScrcpyStream` is ready in 1.8 s, streams H.264, and leaves no server after `stop()`.
   - The revision 1 page showed the live view in Edge.
+  - PyAV decodes the live stream at 30 fps. Qt's own decoder stalls after the first frame.
 
 ## Not verified yet
 
-- The Qt window, the decoding route (Qt FFmpeg or PyAV), Linux and macOS, and an iOS simulator.
+- The Qt window, Linux and macOS (the CI matrix comes in Task 7), and an iOS simulator.
 
 ## Next
 
-- Task 4 in `plan.md`: remove the web layer, install PySide6 (latest, checked live), and spike decoding.
+- Task 5 in `plan.md`: `ActionWorker` and `source_tree`.

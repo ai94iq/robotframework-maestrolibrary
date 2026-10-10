@@ -57,6 +57,7 @@ From Maestro Studio: right-click an element to get a command menu.
 | `adb screencap` | 0.8 to 2.2 s per frame |
 | MCP `inspect_screen` | 0.36 s; bounds are in device pixels |
 | scrcpy-server 5.0 raw stream (`ScrcpyStream`, done) | live; first bytes after 1.5 to 1.8 s; NAL 7, 8, 5 then 1; `avc1.42800a`; the server exits with the adb shell |
+| Task 4 decoder spike | Qt FFmpeg (`QMediaPlayer.setSourceDevice` on a live pipe): 2 frames in 15 s, then stalls; rejected. PyAV 19.0.1 `CodecContext("h264")`: 30.4 fps over 12 s while swiping, first frame 0.1 s after stream start, frame to QImage 1.6 ms avg (3.5 ms max); chosen. Frames are 486x1080 at max_size=1080 |
 | Revision 1 page in headless Edge | live view reached "Live"; it exposed a dropped-step bug, which taught us that actions must queue (the Qt worker queues them) |
 
 ## Global Constraints
