@@ -1,6 +1,7 @@
 # Device-free checks on every push and pull request: unit tests with a coverage gate (the fake MCP
 # server stands in for Maestro), security scans, a Robot dry run of the acceptance suites, libdoc,
 # build and twine check. The acceptance suites themselves need an Android device or emulator.
+# Studio's Qt tests run offscreen on Linux, Windows and macOS.
 # A vX.Y.Z tag also publishes to PyPI with trusted publishing (docs/distribution.md).
 name: CI
 
@@ -16,6 +17,8 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
+    env:
+      QT_QPA_PLATFORM: offscreen
     strategy:
       matrix:
         python: ['3.12', '3.14']   # the floor in pyproject.toml and the latest release
@@ -24,14 +27,15 @@ jobs:
       - uses: actions/setup-python@v7.0.0
         with:
           python-version: ${{ matrix.python }}
+      - run: sudo apt-get update -q && sudo apt-get install -y -q libegl1 libgl1 libxkbcommon0 libfontconfig1 libdbus-1-3   # Qt (Studio)
       - run: python -m pip install -q -U pip
-      - run: python -m pip install -q -e ".[convert]" pytest coverage bandit pip-audit "build>=1.6.1" "twine>=7.0.0"
+      - run: python -m pip install -q -e ".[convert,studio]" pytest coverage bandit pip-audit "build>=1.6.1" "twine>=7.0.0"
       - run: python -m coverage run --branch --source=src/MaestroLibrary -m pytest -q utest
       - run: python -m coverage report --fail-under=85
       - run: python -m bandit -q -c pyproject.toml -r src
-      # Audit what this package depends on, not the runner's own tools.
+      # Audit what this package depends on, extras included, not the runner's own tools.
       - run: |
-          python -c "import tomllib; print(chr(10).join(tomllib.load(open('pyproject.toml', 'rb'))['project']['dependencies']))" > deps.txt
+          python -c "import tomllib; p = tomllib.load(open('pyproject.toml', 'rb'))['project']; print(chr(10).join(p['dependencies'] + [d for e in p['optional-dependencies'].values() for d in e]))" > deps.txt
           python -m pip_audit -r deps.txt
       - run: python -m robot --dryrun --output NONE --report NONE --log NONE atest
       - run: python -m robot.libdoc MaestroLibrary MaestroLibrary.html
@@ -44,9 +48,26 @@ jobs:
             dist/
             MaestroLibrary.html
 
+  studio:
+    # Studio's window, decoder and stream tests on the other two desktop platforms.
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: '3.14'
+      - run: python -m pip install -q -U pip
+      - run: python -m pip install -q -e ".[studio]" pytest
+      - run: python -m pytest -q utest/test_studio.py utest/test_studio_qt.py
+
   publish:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: check
+    needs: [check, studio]
     runs-on: ubuntu-latest
     environment: pypi
     permissions:

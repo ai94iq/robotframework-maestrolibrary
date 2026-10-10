@@ -25,8 +25,10 @@ python -m bandit -q -c pyproject.toml -r src
 
 ## Not verified yet
 
-- The Qt window, Linux and macOS (the CI matrix comes in Task 7), and an iOS simulator.
+- Studio on Linux and macOS (CI runs its tests there), an iOS simulator, and the e2e replay and fallback runs.
 
 ## Next
 
-- Task 7 (docs, skill, CI, security pass), then the device runs at the end: end to end, replay, fallback, and the viewfinder lag the user saw during the harness run (measurement in progress).
+- Device runs at the end: end to end (make the harness read element positions from the window's own tree, not Maestro on the UI thread), replay of the saved test, fallback without scrcpy.
+- Check the first CI run on ubuntu, windows and macos (the ubuntu Qt packages are a best guess).
+- Release 0.6.0 when the user says so; then raise the skill floors and fms-flutter-automation (python:3.14-alpine image) to it.

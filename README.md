@@ -6,13 +6,14 @@ you already know the keyword names, the arguments and the `strategy=value` locat
 There's no Appium server and no capabilities to manage. Maestro waits for the UI on every action.
 
 ## Requirements
+- Python 3.12 or newer
 - Maestro CLI on PATH (`maestro --version`) and Java 17+
 - A running Android emulator or connected Android device, or an iOS simulator on a Mac (WIP, see iOS)
 - Android: `adb` (platform-tools) on PATH. `Open Application` uses it to wait for the app's
   window; `Execute Adb Shell`, screen recording and the logcat files need it. Without it, Open
   Application warns and returns as soon as Maestro does.
-- Optional, for screen mirroring: [scrcpy](https://github.com/Genymobile/scrcpy) on PATH and a
-  display.
+- Optional, for screen mirroring and Studio's live view: [scrcpy](https://github.com/Genymobile/scrcpy)
+  on PATH and a display.
 - `maestro`, `adb` and `scrcpy` are taken only from PATH's absolute folders, never the working
   folder, and only if they answer like the real tool (`adb version`, `scrcpy --version`, and
   Maestro's MCP server naming itself `maestro`). Anything else is stopped and refused.
@@ -227,6 +228,39 @@ Loops come out unrolled and `Run Flow` lines are kept; `Input Password` is recor
 `${PASSWORD}`. Snapshot checks (`Page Should Contain Element`, `Get Text`, ...), screenshots, adb
 and Python steps are not Maestro commands, so they are not in the flow; waiting checks such as
 `Wait Until Page Contains Element` are (`extendedWaitUntil`).
+
+## Studio: record a test on a live device
+```
+pip install "robotframework-maestrolibrary[studio]"      # PySide6 and PyAV
+python -m MaestroLibrary.studio --app com.android.vending
+```
+A window shows the device screen live, and every action you take on it runs on the device
+through MaestroLibrary while the matching Robot line is recorded:
+
+| On the screen | Recorded |
+|---|---|
+| click | `Click Element` with the first unique locator (`id=`, then `text=`), or `point=` and a GAP comment |
+| type, then Enter | merged into the click before it: `Input Text` (`Input Password` with `${PASSWORD}` when Secret is on) |
+| drag | `Swipe By Percent` |
+| right-click | `Long Press`, `Wait Until Page Contains Element`, `Element Should Be Visible`, `Element Text Should Be` |
+| toolbar | `Open Application`, `Go Back`, `Hide Keyboard`, `Capture Page Screenshot` |
+
+Inspect mode selects instead of acting: the element's suggested locators (with how many elements
+each matches), its attributes and the source tree. Undo, Clear, Copy and Save work on the recorded
+lines; Record pauses recording while actions still run. Move the locators into variables and file
+the GAP lines as test id requests before the test joins a suite.
+
+- The live view needs scrcpy on PATH and an Android device; it streams the device's hardware H.264
+  encoder at up to 1080 px (`--max-size`; `--video-encoder` picks another encoder from
+  `scrcpy --list-encoders`). Without it, or on an iOS simulator, the view refreshes with a
+  screenshot after each step.
+- Measured on an Android 15 phone: a tap shows up in the window 120 to 150 ms later (median), app
+  redraw included.
+- Keep Robot runs off the device while Studio is open: Maestro allows one session per device.
+- Linux needs Qt's system libraries (Debian/Ubuntu: `libxcb-cursor0`); Windows and macOS need
+  nothing extra.
+- Device text is shown as plain text, and recorded arguments escape Robot variable syntax, so an
+  app cannot inject code into the saved test.
 
 ## Maestro CLI coverage
 The library talks to `maestro mcp`. What the other `maestro` subcommands do, and where it lives here:
