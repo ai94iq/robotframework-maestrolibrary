@@ -1,5 +1,7 @@
 """The Studio window (PySide6): live device screen, inspector and recorder. Needs the `studio` extra."""
 import html
+import os
+import tempfile
 from collections import Counter
 import subprocess
 import threading
@@ -7,7 +9,7 @@ import time
 
 import av
 from PySide6.QtCore import QByteArray, QObject, QPointF, QRectF, QSettings, QSize, Qt, QThread, QTimer, Signal, Slot
-from PySide6.QtGui import (QAction, QActionGroup, QBrush, QColor, QFontDatabase, QGuiApplication, QIcon, QImage,
+from PySide6.QtGui import (QAction, QActionGroup, QBrush, QColor, QFontDatabase, QGuiApplication, QIcon, QIconEngine, QImage,
                            QFont, QFontMetrics, QKeySequence, QPainter, QPainterPath, QPalette, QPen, QPixmap, QShortcut)
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (QAbstractItemView, QApplication, QFileDialog, QFrame, QGraphicsDropShadowEffect,
@@ -19,6 +21,8 @@ from PySide6.QtWidgets import (QAbstractItemView, QApplication, QFileDialog, QFr
 from .locators import element_at, locator_candidates, parse_bounds, walk
 from .studio_icons import ICONS
 
+# Qt draws an icon and its label about 4 px apart and has no style setting for it: one space doubles it.
+GAP_SPACE = " "
 MAX_SIDE = 8192            # larger frames are dropped: our scrcpy-server never sends them
 
 
@@ -226,14 +230,15 @@ QSS = """
 QWidget {{ color: {ink}; font-size: 13px; }}
 QMainWindow, QWidget#ground {{ background: {ground}; }}
 QFrame#card {{ background: {panel}; border: 1px solid {line}; border-radius: 14px; }}
-QToolBar#shell {{ background: {panel}; border: 0; border-bottom: 1px solid {line}; padding: 10px 16px; spacing: 8px; }}
+QToolBar#shell {{ background: {panel}; border: 0; border-bottom: 1px solid {line}; padding: 10px 16px; spacing: 4px; }}
 QToolBar#shell QToolButton {{ background: transparent; border: 1px solid transparent; border-radius: 8px;
     padding: 6px 10px; color: {ink}; }}
 QToolBar#shell QToolButton:hover {{ background: {hover}; }}
 QToolBar#shell QToolButton:checked {{ background: {accent_soft}; color: {accent}; }}
 QToolBar#shell QToolButton:disabled {{ color: {ink3}; }}
 QToolBar#shell QToolButton:focus {{ border-color: {accent}; }}
-QToolBar#shell QToolButton::menu-indicator {{ image: none; width: 0; }}
+QToolBar#shell QToolButton::menu-indicator {{ image: none; width: 0px; }}
+QToolBar#shell QToolButton[popupMode="2"] {{ padding-right: 10px; }}
 QToolBar::separator {{ background: {line}; width: 1px; margin: 6px 8px; }}
 QFrame#seg {{ background: {raised}; border: 1px solid {line}; border-radius: 11px; }}
 QToolBar#shell QFrame#seg QToolButton {{ border-radius: 8px; padding: 5px 14px; }}
@@ -264,18 +269,27 @@ QLineEdit#testname {{ background: transparent; border: 1px solid transparent; fo
 QLineEdit#testname:hover {{ border-color: {line}; }}
 QLineEdit#testname:focus {{ border-color: {accent}; background: {raised}; }}
 QTableWidget, QTreeWidget, QListWidget {{ background: transparent; border: 0; outline: 0; gridline-color: transparent; }}
-QTableWidget::item, QTreeWidget::item {{ padding: 4px 8px; border: 0; border-radius: 6px; }}
-QTableWidget::item:hover, QTreeWidget::item:hover {{ background: {hover}; }}
-QTableWidget::item:selected, QTreeWidget::item:selected {{ background: {accent_soft}; color: {ink}; }}
+QTableWidget::item, QListWidget::item {{ padding: 4px 8px; border: 0; border-radius: 6px; }}
+QTableWidget::item:hover {{ background: {hover}; }}
+QTableWidget::item:selected {{ background: {accent_soft}; color: {ink}; }}
+QTreeView {{ show-decoration-selected: 1; }}
+QTreeView::item {{ padding: 4px 8px 4px 6px; border: 0; }}
+QTreeView::item:selected, QTreeView::item:selected:active, QTreeView::item:selected:!active {{ background: {accent_soft}; color: {ink}; }}
+QTreeView::branch {{ background: transparent; }}
+QTreeView::branch:hover {{ background: transparent; }}
+QTreeView::branch:selected {{ background: {accent_soft}; }}
+QTreeView::branch:closed:has-children {{ image: url({chevron_right}); }}
+QTreeView::branch:open:has-children {{ image: url({chevron_down}); }}
 QHeaderView {{ background: transparent; }}
 QHeaderView::section {{ background: transparent; color: {ink2}; border: 0; border-bottom: 1px solid {line};
     padding: 6px 8px; font-size: 12px; font-weight: 600; }}
 QTableCornerButton::section {{ background: transparent; border: 0; }}
-QScrollBar:vertical {{ background: transparent; width: 10px; margin: 2px; }}
-QScrollBar:horizontal {{ background: transparent; height: 10px; margin: 2px; }}
+QScrollBar:vertical {{ background: transparent; border: 0; width: 8px; margin: 6px 2px; }}
+QScrollBar:horizontal {{ background: transparent; border: 0; height: 8px; margin: 2px 6px; }}
 QScrollBar::handle {{ background: {line}; border-radius: 4px; min-height: 28px; min-width: 28px; }}
 QScrollBar::handle:hover {{ background: {ink3}; }}
-QScrollBar::add-line, QScrollBar::sub-line {{ width: 0; height: 0; }}
+QScrollBar::add-line, QScrollBar::sub-line {{ width: 0px; height: 0px; border: 0; background: none;
+    subcontrol-origin: margin; }}
 QScrollBar::add-page, QScrollBar::sub-page {{ background: none; }}
 QSplitter::handle {{ background: transparent; }}
 QMenu {{ background: {panel}; border: 1px solid {line}; border-radius: 10px; padding: 6px; }}
@@ -304,50 +318,86 @@ def apply_theme(app, mode="system"):
                       (QPalette.ColorRole.ToolTipBase, "raised"), (QPalette.ColorRole.ToolTipText, "ink")):
         p.setColor(role, QColor(t[key]))
     app.setPalette(p)
-    app.setStyleSheet(QSS.format(**t))
+    app.setStyleSheet(QSS.format(**t, **chevrons(t["ink2"])))
     return t
 
 
-ICON_SIZE = QSize(18, 16)              # a 16px icon plus 2px: with the style's own 4px gap the text sits 6px away
+ICON_SIZE = QSize(16, 16)              # square icons only; the icon-text gap is the stylesheet's padding
 ICON_NAMES = {"act": "mouse-pointer-click", "inspect": "scan-search", "grid": "scan", "launch": "play",
               "back": "arrow-left", "keyboard": "keyboard", "camera": "camera", "lock": "lock", "theme": "sun-moon",
               "record": "circle-dot", "undo": "undo-2", "clear": "trash-2", "copy": "copy", "save": "save",
-              "device": "smartphone"}
+              "device": "smartphone", "chevron-right": "chevron-right", "chevron-down": "chevron-down"}
+
+
+def svg_bytes(name, color, opacity=1.0):
+    return ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="%s" stroke-opacity="%s" '
+            'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">%s</svg>'
+            % (QColor(color).name(), opacity, ICONS[ICON_NAMES.get(name, name)])).encode()
+
+
+class SvgIconEngine(QIconEngine):
+    """Lucide icons drawn from the SVG at exactly the size and pixel ratio asked for, so they are always sharp."""
+
+    def __init__(self, name, color, on_color=None):
+        super().__init__()
+        self.name, self.color, self.on_color = name, color, on_color
+
+    def paint(self, painter, rect, mode, state):
+        color = self.on_color if state == QIcon.State.On and self.on_color else self.color
+        renderer = QSvgRenderer(QByteArray(svg_bytes(self.name, color, 0.4 if mode == QIcon.Mode.Disabled else 1.0)))
+        side = min(rect.width(), rect.height())
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        renderer.render(painter, QRectF(rect.x() + (rect.width() - side) / 2, rect.y() + (rect.height() - side) / 2,
+                                        side, side))
+        painter.restore()
+
+    def pixmap(self, size, mode, state):
+        pm = QPixmap(size)
+        pm.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pm)
+        self.paint(painter, pm.rect(), mode, state)
+        painter.end()
+        return pm
+
+    def clone(self):
+        return SvgIconEngine(self.name, self.color, self.on_color)
 
 
 def icon(name, color, on_color=None):
     """Lucide outline icons (studio_icons) drawn in `color`; `on_color` draws the checked state."""
-    result = QIcon(_icon_pixmap(name, color))
-    if on_color:
-        result.addPixmap(_icon_pixmap(name, on_color), QIcon.Mode.Normal, QIcon.State.On)
-    return result
+    return QIcon(SvgIconEngine(name, color, on_color))
 
 
-def _icon_pixmap(name, color, size=16, gap=2):
-    """The SVG rendered at device resolution, so it is crisp on HiDPI; `gap` is blank space on the right."""
-    screen = QGuiApplication.primaryScreen()
-    ratio = max(2.0, screen.devicePixelRatio() if screen else 2.0)
-    svg = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="%s" stroke-width="2" '
-           'stroke-linecap="round" stroke-linejoin="round">%s</svg>' % (QColor(color).name(), ICONS[ICON_NAMES.get(name, name)]))
-    pm = QPixmap(round((size + gap) * ratio), round(size * ratio))
-    pm.fill(Qt.GlobalColor.transparent)
-    p = QPainter(pm)
-    QSvgRenderer(QByteArray(svg.encode())).render(p, QRectF(0, 0, size * ratio, size * ratio))
-    p.end()
-    pm.setDevicePixelRatio(ratio)
-    return pm
+def chevrons(color):
+    """Paths of chevron PNGs (plus @2x) in a temp folder, for the tree's branch arrows in the stylesheet."""
+    folder = os.path.join(tempfile.gettempdir(), "maestrolibrary-studio")
+    os.makedirs(folder, exist_ok=True)
+    paths = {}
+    for name in ("chevron-right", "chevron-down"):
+        base = os.path.join(folder, "%s-%s" % (name, QColor(color).name()[1:]))
+        for suffix, side in (("", 16), ("@2x", 32)):
+            image = QImage(side, side, QImage.Format.Format_ARGB32)
+            image.fill(Qt.GlobalColor.transparent)
+            painter = QPainter(image)
+            QSvgRenderer(QByteArray(svg_bytes(name, color))).render(painter, QRectF(0, 0, side, side))
+            painter.end()
+            image.save(base + suffix + ".png")
+        paths[name.replace("-", "_")] = (base + ".png").replace("\\", "/")
+    return paths
 
 
 def dot_pixmap(color, size=10):
-    """A filled status dot."""
-    ratio = 2
-    pm = QPixmap(size * ratio, size * ratio)
+    """A filled status dot, antialiased at the screen's pixel ratio."""
+    screen = QGuiApplication.primaryScreen()
+    ratio = max(2.0, screen.devicePixelRatio() if screen else 2.0)
+    pm = QPixmap(round(size * ratio), round(size * ratio))
     pm.fill(Qt.GlobalColor.transparent)
     p = QPainter(pm)
     p.setRenderHint(QPainter.RenderHint.Antialiasing)
     p.setPen(Qt.PenStyle.NoPen)
     p.setBrush(QColor(color))
-    p.drawEllipse(0, 0, size * ratio, size * ratio)
+    p.drawEllipse(QRectF(0, 0, size * ratio, size * ratio))
     p.end()
     pm.setDevicePixelRatio(ratio)
     return pm
@@ -463,10 +513,12 @@ class DeviceView(QWidget):
                     box = self._box(e)
                     if box:
                         p.drawRect(box)
-        for element, color, fill in ((self.hover, self.t["select"], 40), (self.pick, self.t["ok"], 40)):
+        for element, width, line, fill in ((self.hover, 1, 120, 16), (self.pick, 2, 255, 28)):
             box = self._box(element) if element else None
             if box:
-                c = QColor(color); p.setPen(QPen(c, 2.5)); c.setAlpha(fill); p.fillRect(box, c); p.drawRect(box)
+                c = QColor(self.t["select"]); c.setAlpha(fill); p.setBrush(c)
+                c.setAlpha(line); p.setPen(QPen(c, width))
+                p.drawRoundedRect(box.adjusted(width / 2, width / 2, -width / 2, -width / 2), 6, 6)
         p.setPen(QPen(QColor(self.t["rec"] if self._flash else self.t["line"]), 4 if self._flash else 2))
         p.setBrush(Qt.BrushStyle.NoBrush)
         p.drawPath(frame)
@@ -629,6 +681,35 @@ class LineDelegate(QStyledItemDelegate):
         number, line = text[:3].strip(), text[5:]
         return number, line
 
+    def _runs(self, line):
+        t = self.t
+        parts = line.split("    ")
+        runs = [(parts[0], t["warn"] if parts[0].startswith("#") else t["accent"], True)]
+        for arg in parts[1:]:
+            if arg:
+                runs.append((arg, t["warn"] if arg.startswith("#") else t["ok"] if "\\=" in arg else t["ink"], False))
+        return runs
+
+    def _flow(self, line, font, width):
+        """[(word, colour, bold, x, row)] with the runs wrapped to `width`, and the number of rows."""
+        words, x, row = [], 0, 0
+        for text, color, bold in self._runs(line):
+            f = QFont(font)
+            f.setWeight(QFont.Weight.DemiBold if bold else QFont.Weight.Normal)
+            metrics = QFontMetrics(f)
+            space = metrics.horizontalAdvance(" ")
+            for word in text.split(" "):
+                w = metrics.horizontalAdvance(word)
+                if x and x + w > width:
+                    x, row = 0, row + 1
+                words.append((word, color, bold, x, row))
+                x += w + space
+            x += 3 * space                  # runs are four spaces apart
+        return words, row + 1
+
+    def _width(self, option, widget_width):
+        return max(120, widget_width - 12 - self.GUTTER - 4 - 8)
+
     def paint(self, painter, option, index):
         number, line = self._parts(index)
         t = self.t
@@ -648,33 +729,28 @@ class LineDelegate(QStyledItemDelegate):
         if fill is not None:
             painter.setPen(Qt.PenStyle.NoPen); painter.setBrush(fill)
             painter.drawRoundedRect(box, 6, 6)
-        painter.setFont(option.font)
-        metrics = QFontMetrics(option.font)
+        height = QFontMetrics(option.font).height()
         mid = Qt.AlignmentFlag.AlignVCenter | Qt.TextFlag.TextSingleLine
+        painter.setFont(option.font)
         painter.setPen(QColor(t["ink3"]))
-        painter.drawText(QRectF(box.left(), box.top(), self.GUTTER - 8, box.height()),
-                         Qt.AlignmentFlag.AlignRight | mid, number)
-        x = box.left() + self.GUTTER + 4
-        parts = line.split("    ")
-        runs = [(parts[0], t["warn"] if parts[0].startswith("#") else t["accent"], True)]
-        for arg in parts[1:]:
-            if arg:
-                runs.append((arg, t["warn"] if arg.startswith("#") else t["ok"] if "\\=" in arg else t["ink"], False))
-        gap = metrics.horizontalAdvance("    ")
-        for text, color, bold in runs:
+        painter.drawText(QRectF(box.left(), box.top(), self.GUTTER - 8, 28), Qt.AlignmentFlag.AlignRight | mid, number)
+        words, rows = self._flow(line, option.font, int(box.width() - self.GUTTER - 4 - 8))
+        top = box.top() + (box.height() - rows * height) / 2
+        for word, color, bold, x, row in words:
             font = QFont(option.font)
             font.setWeight(QFont.Weight.DemiBold if bold else QFont.Weight.Normal)
             painter.setFont(font)
             painter.setPen(QColor(color))
-            width = QFontMetrics(font).horizontalAdvance(text)
-            painter.drawText(QRectF(x, box.top(), width + 2, box.height()), mid, text)
-            x += width + gap
+            painter.drawText(QRectF(box.left() + self.GUTTER + 4 + x, top + row * height,
+                                    QFontMetrics(font).horizontalAdvance(word) + 2, height), mid, word)
         painter.restore()
 
     def sizeHint(self, option, index):
         number, line = self._parts(index)
-        metrics = QFontMetrics(option.font)
-        return QSize(self.GUTTER + 16 + metrics.horizontalAdvance(line) + 12, max(metrics.height() + 14, 30))
+        view = option.widget.viewport().width() if option.widget else 480
+        height = QFontMetrics(option.font).height()
+        _, rows = self._flow(line, option.font, self._width(option, view))
+        return QSize(view, max(rows * height + 14, 30))
 
 
 class InspectorPane(QWidget):
@@ -812,12 +888,12 @@ class RecorderPane(QWidget):
         layout.addWidget(self.name)
         head = QHBoxLayout(); head.setSpacing(8); head.setContentsMargins(9, 0, 0, 0)
         head.addWidget(plain_label("Recorded steps", "pane")); head.addStretch()
-        self.record_button = QPushButton("Recording")
+        self.record_button = QPushButton(GAP_SPACE + "Recording")
         self.record_button.setCheckable(True); self.record_button.setChecked(True)
         self.record_button.toggled.connect(self._record)
-        self.undo_button = QPushButton("Undo")
+        self.undo_button = QPushButton(GAP_SPACE + "Undo")
         self.undo_button.setToolTip("Removes the last line; the action on the device is not undone")
-        self.clear_button = QPushButton("Clear")
+        self.clear_button = QPushButton(GAP_SPACE + "Clear")
         self.undo_button.clicked.connect(lambda: self.edit.emit("undo"))
         self.clear_button.clicked.connect(lambda: self.edit.emit("clear"))
         for button in (self.record_button, self.undo_button, self.clear_button):
@@ -827,7 +903,9 @@ class RecorderPane(QWidget):
         self.lines.setFrameShape(QFrame.Shape.NoFrame)
         self.lines.setFont(QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont))
         self.lines.setItemDelegate(LineDelegate(theme, self.lines))
-        self.lines.setHorizontalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        self.lines.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.lines.setResizeMode(QListWidget.ResizeMode.Adjust)          # long lines re-wrap on resize
+        self.lines.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
         self.lines.setMouseTracking(True)
         self.lines.setToolTip("Delete removes the selected line")
         QShortcut(QKeySequence(Qt.Key.Key_Delete), self.lines, activated=self._remove_selected)
@@ -837,9 +915,9 @@ class RecorderPane(QWidget):
         layout.addWidget(self.empty)
         foot = QHBoxLayout(); foot.setSpacing(8)
         foot.addStretch()
-        self.copy_button = QPushButton("Copy")
+        self.copy_button = QPushButton(GAP_SPACE + "Copy")
         self.copy_button.clicked.connect(lambda: QGuiApplication.clipboard().setText(self.session.robot(self.name.text())))
-        save = QPushButton("Save .robot")
+        save = QPushButton(GAP_SPACE + "Save")
         save.setObjectName("primary")
         save.clicked.connect(self.save)
         foot.addWidget(self.copy_button); foot.addWidget(save)
@@ -863,7 +941,7 @@ class RecorderPane(QWidget):
 
     def _record(self, on):
         self.session.recording = on
-        self.record_button.setText("Recording" if on else "Paused")
+        self.record_button.setText(GAP_SPACE + ("Recording" if on else "Paused"))
 
     def show_lines(self, lines, stamp=False):
         self.lines.clear()
@@ -980,7 +1058,9 @@ class MainWindow(QMainWindow):
         bar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         bar.setIconSize(ICON_SIZE)
         self.addToolBar(bar)
+        gap = lambda: bar.addWidget(self._gap())
         bar.addWidget(plain_label("MaestroLibrary Studio", "product"))
+        gap()
         pill = QFrame(); pill.setObjectName("pill")
         row = QHBoxLayout(pill); row.setContentsMargins(10, 4, 12, 4); row.setSpacing(6)
         self.device_icon = plain_label("", "device_icon")
@@ -989,6 +1069,7 @@ class MainWindow(QMainWindow):
         for widget in (self.device_icon, self.dot, self.state):
             row.addWidget(widget)
         bar.addWidget(pill)
+        gap()
         self._dot("ink3")
         modes = QActionGroup(self); modes.setExclusive(True)
         self.act_mode = self._iconed(QAction("Act", self, checkable=True, checked=True), "act", on="accent_ink")
@@ -1001,14 +1082,17 @@ class MainWindow(QMainWindow):
             modes.addAction(action)
             button = QToolButton(); button.setDefaultAction(action)
             button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon); button.setIconSize(ICON_SIZE)
+            button.setAutoRaise(True)
             segment.addWidget(button)
             action.triggered.connect(lambda _=False, m=mode: self._mode(m))
         bar.addWidget(seg)
+        gap()
         self.handles = self._iconed(QAction("Elements", self, checkable=True), "grid")
         self.handles.setToolTip("Outline every element a locator can find")
         self.handles.toggled.connect(lambda on: (setattr(self.device, "handles", on), self.device.update()))
         bar.addAction(self.handles)
-        spacer = QWidget(); spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        spacer = self._gap(16); spacer.setMaximumWidth(16777215)
+        spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         bar.addWidget(spacer)
         for kind, name, text, tip in (("launch", "launch", "Launch", "Open Application (restarts the app)"),
                                       ("back", "back", "Back", "Go Back (Android)"),
@@ -1033,15 +1117,19 @@ class MainWindow(QMainWindow):
             action.triggered.connect(lambda _=False, m=mode: self.set_theme(m))
             group.addAction(action)
             self.theme_actions[mode] = action
-        self.theme_button = QToolButton()
-        self.theme_button.setText("Theme")
-        self.theme_button.setToolTip("Theme: follow the system, or always light or dark")
-        self.theme_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-        self.theme_button.setIconSize(ICON_SIZE)
+        theme = self._iconed(QAction("Theme", self), "theme")
+        theme.setToolTip("Theme: follow the system, or always light or dark")
+        theme.setMenu(themes)
+        bar.addAction(theme)
+        self.theme_button = bar.widgetForAction(theme)           # a toolbar button like the others
         self.theme_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
-        self.theme_button.setMenu(themes)
-        self._iconed(self.theme_button, "theme")
-        bar.addWidget(self.theme_button)
+        self.theme_button.setAutoRaise(True)
+
+    @staticmethod
+    def _gap(width=8):
+        """Blank space between toolbar groups (the toolbar's own spacing is added on both sides)."""
+        spacer = QWidget(); spacer.setFixedWidth(width)
+        return spacer
 
     def _mode(self, mode):
         self.hint.setText(ACT_HINT if mode == "act" else INSPECT_HINT)
@@ -1081,13 +1169,14 @@ class MainWindow(QMainWindow):
         """Gives an action or button a theme-following icon whose checked state uses `on` (the accent)."""
         self._icons.append((target, name, key, on))
         target.setIcon(icon(name, self.t[key], self.t[on]))
+        if isinstance(target, QAction) and target.text():
+            target.setIconText(GAP_SPACE + target.text())    # Qt has no QSS gap between icon and text
         return target
 
     def set_theme(self, mode):
         """System, light or dark; applied at once and remembered for the next start."""
         self.theme_mode = mode
         self.settings.setValue("theme", mode)
-        self.t.clear()
         self.t.update(apply_theme(QApplication.instance(), mode))      # the panes share this dict
         for target, name, key, on in self._icons:
             target.setIcon(icon(name, self.t[key], self.t[on]))
@@ -1101,7 +1190,7 @@ class MainWindow(QMainWindow):
 
     def _dot(self, key):
         self.dot.setPixmap(dot_pixmap(self.t[key]))
-        self.device_icon.setPixmap(_icon_pixmap("device", self.t["ink2"], gap=0))
+        self.device_icon.setPixmap(icon("device", self.t["ink2"]).pixmap(ICON_SIZE))
 
     def show_newest(self, reader):
         image, _ = reader.take()

@@ -52,6 +52,8 @@ LUCIDE_VERSION = "1.55.0"
 ICONS = {
     "arrow-left": ('<path d="m12 19-7-7 7-7" /> <path d="M19 12H5" />'),
     "camera": ('<path d="M13.997 4a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 1.759-1.048l.489-.904A2 2 0 0 1 10.004 4z" /> <circle cx="12" cy="13" r="3" />'),
+    "chevron-down": ('<path d="m6 9 6 6 6-6" />'),
+    "chevron-right": ('<path d="m9 18 6-6-6-6" />'),
     "circle-dot": ('<circle cx="12" cy="12" r="1" /> <circle cx="12" cy="12" r="10" />'),
     "copy": ('<rect width="14" height="14" x="8" y="8" rx="2" ry="2" /> <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />'),
     "keyboard": ('<path d="M10 8h.01" /> <path d="M12 12h.01" /> <path d="M14 8h.01" /> <path d="M16 12h.01" /> <path d="M18 8h.01" /> <path d="M6 8h.01" /> <path d="M7 16h10" /> <path d="M8 12h.01" /> <rect width="20" height="16" x="2" y="4" rx="2" />'),
