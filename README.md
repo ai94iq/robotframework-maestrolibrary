@@ -256,6 +256,9 @@ the GAP lines as test id requests before the test joins a suite.
   screenshot after each step.
 - Measured on an Android 15 phone: a tap shows up in the window 120 to 150 ms later (median), app
   redraw included.
+- The Theme menu in the toolbar offers System, Light and Dark; the choice is remembered between runs.
+- Shortcuts: `Ctrl+1` Act, `Ctrl+2` Inspect, `Ctrl+Z` undo, `Ctrl+S` save, `Delete` removes the
+  selected recorded line.
 - Keep Robot runs off the device while Studio is open: Maestro allows one session per device.
 - Linux needs Qt's system libraries (Debian/Ubuntu: `libxcb-cursor0`); Windows and macOS need
   nothing extra.

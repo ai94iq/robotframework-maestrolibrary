@@ -1,5 +1,7 @@
 import os
+import shutil
 import sys
+import tempfile
 import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -168,7 +170,9 @@ HOSTILE = "<b>x</b><img src=x>"
 
 
 @unittest.skipIf(av is None, "needs the studio extra (PySide6, av)")
-class WindowTest(unittest.TestCase):
+class WindowCase(unittest.TestCase):
+    """The window fixture shared by the window tests; holds no tests itself."""
+
     @classmethod
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])
@@ -182,7 +186,8 @@ class WindowTest(unittest.TestCase):
         self.lib = FakeLib(screen)
         self.session = Session(self.lib)
         self.worker = ActionWorker(self.session)           # same thread: steps run at once
-        self.window = MainWindow(self.session, self.worker, device_name="SER")
+        self.settings = self.ini_settings()
+        self.window = MainWindow(self.session, self.worker, device_name="SER", settings=self.settings)
         self.window.resize(1400, 900)
         self.window.show()
         self.view = self.window.device
@@ -195,12 +200,24 @@ class WindowTest(unittest.TestCase):
     def tearDown(self):
         self.window.close()
 
+    def ini_settings(self):
+        """QSettings in a temp ini file, so tests never touch the user's real settings."""
+        from PySide6.QtCore import QSettings
+        folder = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, folder, True)
+        settings = QSettings(os.path.join(folder, "studio.ini"), QSettings.Format.IniFormat)
+        self.addCleanup(settings.sync)
+        return settings
+
     def point(self, x, y):
         """The widget point that shows device point (x, y)."""
         from PySide6.QtCore import QPoint
         r = self.view.frame_rect()
         return QPoint(round(r.x() + x * r.width() / 1080), round(r.y() + y * r.height() / 2400))
 
+
+@unittest.skipIf(av is None, "needs the studio extra (PySide6, av)")
+class WindowTest(WindowCase):
     def test_click_maps_widget_to_device_pixels(self):
         from PySide6.QtCore import Qt
         from PySide6.QtTest import QTest
@@ -283,6 +300,60 @@ class WindowTest(unittest.TestCase):
 
 
 @unittest.skipIf(av is None, "needs the studio extra (PySide6, av)")
+class ThemeTest(WindowCase):
+    def images(self, icon_):
+        from PySide6.QtGui import QIcon
+        return [icon_.pixmap(32, 32, QIcon.Mode.Normal, state).toImage()
+                for state in (QIcon.State.Off, QIcon.State.On)]
+
+    def new_window(self):
+        from MaestroLibrary.studio_qt import MainWindow
+        window = MainWindow(self.session, self.worker, device_name="SER", settings=self.settings)
+        self.addCleanup(window.close)
+        return window
+
+    def test_checked_icon_is_drawn_in_its_own_color(self):
+        from MaestroLibrary.studio_qt import icon
+        off, on = self.images(icon("act", "#000000", "#ff0000"))
+        self.assertNotEqual(off, on)
+
+    def test_icon_without_on_color_looks_the_same_when_checked(self):
+        from MaestroLibrary.studio_qt import icon
+        off, on = self.images(icon("act", "#000000"))
+        self.assertEqual(off, on)
+
+    def test_checked_toolbar_action_icon_is_visible(self):
+        off, on = self.images(self.window.inspect_mode.icon())
+        self.assertNotEqual(off, on)
+
+    def test_set_theme_updates_shared_tokens_settings_and_menu(self):
+        from MaestroLibrary.studio_qt import THEMES
+        window = self.window
+        window.set_theme("dark")
+        self.assertEqual(window.t["ground"], THEMES["dark"]["ground"])
+        self.assertIs(window.device.t, window.t)
+        self.assertIs(window.recorder.t, window.t)
+        self.assertEqual(self.settings.value("theme"), "dark")
+        self.assertTrue(window.theme_actions["dark"].isChecked())
+        window.set_theme("light")
+        self.assertEqual(window.t["ground"], THEMES["light"]["ground"])
+        self.assertEqual(self.settings.value("theme"), "light")
+        self.assertTrue(window.theme_actions["light"].isChecked())
+        self.assertFalse(window.theme_actions["dark"].isChecked())
+        self.assertEqual(self.new_window().theme_mode, "light")
+
+    def test_invalid_stored_theme_falls_back_to_system(self):
+        self.settings.setValue("theme", "neon")
+        self.assertEqual(self.new_window().theme_mode, "system")
+
+    def test_apply_theme_returns_tokens_and_sets_stylesheet(self):
+        from MaestroLibrary.studio_qt import THEMES, apply_theme, theme_name
+        self.assertEqual(apply_theme(self.app, "light"), THEMES["light"])
+        self.assertTrue(self.app.styleSheet())
+        self.assertEqual(theme_name(self.app, "dark"), "dark")
+
+
+@unittest.skipIf(av is None, "needs the studio extra (PySide6, av)")
 class MainTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -299,6 +370,10 @@ class MainTest(unittest.TestCase):
         reader = mock.Mock()
         windows = []
         real_window = studio_qt.MainWindow
+        from PySide6.QtCore import QSettings
+        folder = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, folder, True)
+        ini = QSettings(os.path.join(folder, "studio.ini"), QSettings.Format.IniFormat)
 
         def window(*args, **kwargs):
             windows.append(real_window(*args, **kwargs))
@@ -306,6 +381,7 @@ class MainTest(unittest.TestCase):
         with mock.patch.object(MaestroLibrary, "MaestroLibrary", return_value=lib), \
                 mock.patch.object(studio_qt, "StreamReader", return_value=reader) as make_reader, \
                 mock.patch.object(studio_qt, "MainWindow", side_effect=window), \
+                mock.patch.object(studio_qt, "QSettings", return_value=ini), \
                 mock.patch.object(QApplication, "exec", return_value=0):
             self.assertEqual(studio.main(["--app", "com.app", "--max-size", "800"]), 0)
         windows[0].close()
@@ -334,7 +410,7 @@ class MainTest(unittest.TestCase):
 
 
 @unittest.skipIf(av is None, "needs the studio extra (PySide6, av)")
-class LiveStateTest(WindowTest):
+class LiveStateTest(WindowCase):
     def test_live_then_fallback(self):
         from PySide6.QtGui import QImage
         self.window.go_live(QImage(10, 20, QImage.Format.Format_RGB888))

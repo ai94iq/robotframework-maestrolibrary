@@ -6,12 +6,13 @@ import threading
 import time
 
 import av
-from PySide6.QtCore import QObject, QPointF, QRectF, QSize, Qt, QThread, QTimer, Signal, Slot
+from PySide6.QtCore import QObject, QPointF, QRectF, QSettings, QSize, Qt, QThread, QTimer, Signal, Slot
 from PySide6.QtGui import (QAction, QActionGroup, QBrush, QColor, QFontDatabase, QGuiApplication, QIcon, QImage,
                            QKeySequence, QPainter, QPainterPath, QPalette, QPen, QPixmap, QShortcut)
-from PySide6.QtWidgets import (QAbstractItemView, QApplication, QFileDialog, QHBoxLayout, QHeaderView, QLabel,
+from PySide6.QtWidgets import (QAbstractItemView, QApplication, QFileDialog, QFrame, QHBoxLayout, QHeaderView, QLabel,
                                QLineEdit, QListWidget, QListWidgetItem, QMainWindow, QMenu, QPushButton, QSizePolicy,
-                               QSplitter, QTableWidget, QTableWidgetItem, QToolBar, QTreeWidget, QTreeWidgetItem,
+                               QSplitter, QTableWidget, QTableWidgetItem, QToolBar, QToolButton, QTreeWidget,
+                               QTreeWidgetItem,
                                QVBoxLayout, QWidget, QWidgetAction)
 
 from .locators import element_at, locator_candidates, parse_bounds, walk
@@ -196,59 +197,115 @@ class StreamReader(QThread):
 
 # ---------------------------------------------------------------- the window
 
+# Design tokens: one set of names for both themes, so every widget and painter reads the same palette.
 THEMES = {
-    "light": {"ground": "#f3f1ec", "panel": "#fbfaf7", "line": "#d8d2c6", "ink": "#1d2126", "ink2": "#56606b",
-              "shell": "#18324a", "shell_ink": "#eef3f7", "shell2": "#2a4a66", "rec": "#c8372d", "rec_soft": "#f6dcd8",
-              "ok": "#1f7a4d", "warn": "#9a5b00", "select": "#2f6fb3", "screen": "#0b0d10"},
-    "dark": {"ground": "#12161b", "panel": "#181d23", "line": "#2b333d", "ink": "#e6e9ed", "ink2": "#a3adb8",
-             "shell": "#0d2236", "shell_ink": "#e3ecf4", "shell2": "#1d3a55", "rec": "#ff6b5e", "rec_soft": "#3a1d1b",
-             "ok": "#5fd39a", "warn": "#f0b75a", "select": "#7db4ee", "screen": "#000000"},
+    "light": {"ground": "#eef0f3", "panel": "#ffffff", "raised": "#f6f7f9", "hover": "#eceff3", "line": "#e1e4ea",
+              "ink": "#14171c", "ink2": "#5b6372", "ink3": "#9aa1ad", "accent": "#4361ee", "accent_soft": "#e4e9fd",
+              "accent_ink": "#ffffff", "rec": "#e5484d", "rec_soft": "#fde4e5", "ok": "#16a34a", "warn": "#b45309",
+              "select": "#4361ee", "screen": "#0b0d10"},
+    "dark": {"ground": "#0d0f13", "panel": "#15181e", "raised": "#1b1f27", "hover": "#222733", "line": "#272c37",
+             "ink": "#e7e9ee", "ink2": "#9ba3b1", "ink3": "#5f6775", "accent": "#7b93ff", "accent_soft": "#252d4d",
+             "accent_ink": "#0d0f13", "rec": "#ff6369", "rec_soft": "#3a1d20", "ok": "#3ecf8e", "warn": "#f5b14c",
+             "select": "#7b93ff", "screen": "#000000"},
 }
+THEME_MODES = ("system", "light", "dark")
 
 
-def theme_name(app):
+def theme_name(app, mode="system"):
+    if mode in ("light", "dark"):
+        return mode
     try:
         return "dark" if app.styleHints().colorScheme() == Qt.ColorScheme.Dark else "light"
     except AttributeError:             # Qt before 6.5
         return "light"
 
 
-def apply_theme(app):
-    """Fusion everywhere, so the window looks the same on Windows, Linux and macOS; colors follow the system."""
-    t = THEMES[theme_name(app)]
+QSS = """
+QWidget {{ color: {ink}; font-size: 13px; }}
+QMainWindow, QWidget#ground {{ background: {ground}; }}
+QFrame#card {{ background: {panel}; border: 1px solid {line}; border-radius: 12px; }}
+QToolBar#shell {{ background: {panel}; border: 0; border-bottom: 1px solid {line}; padding: 8px 12px; spacing: 4px; }}
+QToolBar#shell QToolButton {{ background: transparent; border: 1px solid transparent; border-radius: 8px;
+    padding: 6px 10px; color: {ink}; }}
+QToolBar#shell QToolButton:hover {{ background: {hover}; }}
+QToolBar#shell QToolButton:checked {{ background: {accent_soft}; color: {accent}; font-weight: 600; }}
+QToolBar#shell QToolButton:disabled {{ color: {ink3}; }}
+QToolBar#shell QToolButton:focus {{ border-color: {accent}; }}
+QToolBar#shell QToolButton::menu-indicator {{ image: none; width: 0; }}
+QToolBar::separator {{ background: {line}; width: 1px; margin: 4px 8px; }}
+QLabel#product {{ font-size: 15px; font-weight: 700; padding-right: 8px; }}
+QLabel#state {{ color: {ink2}; padding-right: 6px; }}
+QLabel#pane {{ font-size: 12px; font-weight: 700; color: {ink2}; padding: 12px 14px 6px; }}
+QLabel#hint {{ color: {ink2}; padding: 6px 12px; }}
+QLabel#title {{ font-size: 15px; font-weight: 600; padding: 0 14px 8px; }}
+QLabel#title[empty="true"] {{ font-size: 13px; font-weight: 400; color: {ink2}; }}
+QLabel#name_label, QLabel#empty {{ color: {ink2}; }}
+QPushButton {{ background: {raised}; border: 1px solid {line}; border-radius: 8px; padding: 6px 12px; }}
+QPushButton:hover {{ background: {hover}; }}
+QPushButton:pressed {{ background: {line}; }}
+QPushButton:focus {{ border-color: {accent}; }}
+QPushButton:checked {{ background: {rec_soft}; color: {rec}; border-color: {rec}; font-weight: 600; }}
+QPushButton#primary {{ background: {accent}; color: {accent_ink}; border-color: {accent}; font-weight: 600; }}
+QPushButton#primary:hover {{ background: {select}; }}
+QLineEdit {{ background: {raised}; border: 1px solid {line}; border-radius: 8px; padding: 6px 10px;
+    selection-background-color: {accent_soft}; selection-color: {ink}; }}
+QLineEdit:focus {{ border-color: {accent}; background: {panel}; }}
+QTableWidget, QTreeWidget, QListWidget {{ background: {panel}; border: 0; outline: 0; gridline-color: transparent; }}
+QTableWidget::item, QTreeWidget::item {{ padding: 4px 8px; border: 0; }}
+QListWidget::item {{ padding: 6px 10px; border-radius: 6px; margin: 1px 6px; }}
+QTableWidget::item:hover, QTreeWidget::item:hover, QListWidget::item:hover {{ background: {hover}; }}
+QTableWidget::item:selected, QTreeWidget::item:selected, QListWidget::item:selected {{
+    background: {accent_soft}; color: {ink}; }}
+QHeaderView {{ background: {panel}; }}
+QHeaderView::section {{ background: {panel}; color: {ink2}; border: 0; border-bottom: 1px solid {line};
+    padding: 6px 8px; font-size: 12px; font-weight: 600; }}
+QTableCornerButton::section {{ background: {panel}; border: 0; }}
+QScrollBar:vertical {{ background: transparent; width: 10px; margin: 2px; }}
+QScrollBar:horizontal {{ background: transparent; height: 10px; margin: 2px; }}
+QScrollBar::handle {{ background: {line}; border-radius: 4px; min-height: 28px; min-width: 28px; }}
+QScrollBar::handle:hover {{ background: {ink3}; }}
+QScrollBar::add-line, QScrollBar::sub-line {{ width: 0; height: 0; }}
+QScrollBar::add-page, QScrollBar::sub-page {{ background: none; }}
+QSplitter::handle {{ background: {ground}; }}
+QMenu {{ background: {panel}; border: 1px solid {line}; border-radius: 10px; padding: 6px; }}
+QMenu::item {{ padding: 7px 16px 7px 12px; border-radius: 6px; }}
+QMenu::item:selected {{ background: {accent_soft}; color: {ink}; }}
+QMenu::item:disabled {{ color: {ink2}; }}
+QMenu::separator {{ height: 1px; background: {line}; margin: 4px 8px; }}
+QMenu::indicator {{ width: 0; }}
+QToolTip {{ background: {raised}; color: {ink}; border: 1px solid {line}; border-radius: 6px; padding: 4px 8px; }}
+QStatusBar {{ background: {panel}; border-top: 1px solid {line}; }}
+QStatusBar::item {{ border: 0; }}
+QStatusBar QLabel {{ color: {ink2}; padding: 2px 8px; }}
+"""
+
+
+def apply_theme(app, mode="system"):
+    """Fusion (the same on Windows, Linux and macOS) themed from the tokens; mode is system, light or dark."""
+    t = dict(THEMES[theme_name(app, mode)])
     app.setStyle("Fusion")
     p = QPalette()
     for role, key in ((QPalette.ColorRole.Window, "ground"), (QPalette.ColorRole.Base, "panel"),
-                      (QPalette.ColorRole.AlternateBase, "ground"), (QPalette.ColorRole.Button, "panel"),
+                      (QPalette.ColorRole.AlternateBase, "raised"), (QPalette.ColorRole.Button, "raised"),
                       (QPalette.ColorRole.Text, "ink"), (QPalette.ColorRole.WindowText, "ink"),
-                      (QPalette.ColorRole.ButtonText, "ink"), (QPalette.ColorRole.Highlight, "select"),
-                      (QPalette.ColorRole.PlaceholderText, "ink2"), (QPalette.ColorRole.ToolTipBase, "panel"),
-                      (QPalette.ColorRole.ToolTipText, "ink")):
+                      (QPalette.ColorRole.ButtonText, "ink"), (QPalette.ColorRole.Highlight, "accent"),
+                      (QPalette.ColorRole.HighlightedText, "accent_ink"), (QPalette.ColorRole.PlaceholderText, "ink3"),
+                      (QPalette.ColorRole.ToolTipBase, "raised"), (QPalette.ColorRole.ToolTipText, "ink")):
         p.setColor(role, QColor(t[key]))
-    p.setColor(QPalette.ColorRole.HighlightedText, QColor("#ffffff"))
     app.setPalette(p)
-    app.setStyleSheet(
-        f"QToolBar#shell {{ background: {t['shell']}; border: 0; padding: 6px 10px; spacing: 6px; }}"
-        f"QToolBar#shell QToolButton {{ color: {t['shell_ink']}; border: 1px solid {t['shell2']}; border-radius: 6px;"
-        f" padding: 4px 9px; }}"
-        f"QToolBar#shell QToolButton:hover {{ background: {t['shell2']}; }}"
-        f"QToolBar#shell QToolButton:checked {{ background: {t['shell_ink']}; color: {t['shell']}; }}"
-        f"QToolBar#shell QLabel {{ color: {t['shell_ink']}; }}"
-        f"QLabel#product {{ font-weight: 600; font-size: 14px; padding-right: 10px; }}"
-        f"QLabel#pane {{ font-weight: 600; padding: 8px 10px 4px; }}"
-        f"QLabel#hint {{ color: {t['ink2']}; padding: 4px 12px; }}"
-        f"QLabel#title {{ font-size: 14px; font-weight: 600; }}"
-        f"QLabel#title[empty=\"true\"] {{ font-size: 13px; font-weight: 400; color: {t['ink2']}; }}"
-        f"QSplitter::handle {{ background: {t['line']}; }}"
-        f"QPushButton {{ padding: 4px 10px; }}"
-        f"QLineEdit {{ border: 1px solid {t['line']}; border-radius: 6px; padding: 4px 6px; background: {t['ground']}; }}"
-        f"QLineEdit:focus {{ border-color: {t['select']}; }}"
-        f"QPushButton:checked {{ background: {t['rec_soft']}; color: {t['rec']}; border: 1px solid {t['rec']}; }}")
+    app.setStyleSheet(QSS.format(**t))
     return t
 
 
-def icon(name, color):
-    """Line icons drawn in one stroke weight; no font glyphs."""
+def icon(name, color, on_color=None):
+    """Line icons drawn in one stroke weight (no font glyphs); `on_color` draws the checked state."""
+    result = QIcon(_icon_pixmap(name, color))
+    if on_color:
+        result.addPixmap(_icon_pixmap(name, on_color), QIcon.Mode.Normal, QIcon.State.On)
+    return result
+
+
+def _icon_pixmap(name, color):
     pm = QPixmap(32, 32)
     pm.fill(Qt.GlobalColor.transparent)
     p = QPainter(pm)
@@ -292,9 +349,13 @@ def icon(name, color):
         path.lineTo(17, 18); path.lineTo(24, 18); path.closeSubpath()
     elif name == "record":
         p.setBrush(QColor(color)); path.addEllipse(10, 10, 12, 12)
+    elif name == "theme":
+        path.addEllipse(7, 7, 18, 18)
+        half = QPainterPath(); half.moveTo(16, 7); half.arcTo(7, 7, 18, 18, 90, 180); half.closeSubpath()
+        p.fillPath(half, QColor(color))
     p.drawPath(path)
     p.end()
-    return QIcon(pm)
+    return pm
 
 
 def plain_label(text="", name=""):
@@ -411,7 +472,7 @@ class DeviceView(QWidget):
             box = self._box(element) if element else None
             if box:
                 c = QColor(color); p.setPen(QPen(c, 2.5)); c.setAlpha(fill); p.fillRect(box, c); p.drawRect(box)
-        p.setPen(QPen(QColor(self.t["rec"] if self._flash else self.t["shell"]), 4 if self._flash else 3))
+        p.setPen(QPen(QColor(self.t["rec"] if self._flash else self.t["line"]), 4 if self._flash else 2))
         p.setBrush(Qt.BrushStyle.NoBrush)
         p.drawPath(frame)
         if self.hasFocus():
@@ -637,13 +698,13 @@ class RecorderPane(QWidget):
         layout = QVBoxLayout(self); layout.setContentsMargins(0, 0, 0, 0); layout.setSpacing(0)
         head = QHBoxLayout(); head.setContentsMargins(10, 6, 10, 6)
         head.addWidget(plain_label("Recorded steps", "pane")); head.addStretch()
-        self.record_button = QPushButton(icon("record", theme["rec"]), "Recording")
+        self.record_button = QPushButton("Recording")
         self.record_button.setCheckable(True); self.record_button.setChecked(True)
         self.record_button.toggled.connect(self._record)
-        self.undo_button = QPushButton(icon("undo", theme["ink"]), "Undo")
+        self.undo_button = QPushButton("Undo")
         self.undo_button.setToolTip("Removes the last line; the action on the device is not undone")
-        self.clear_button = QPushButton(icon("clear", theme["ink"]), "Clear")
-        copy = QPushButton(icon("copy", theme["ink"]), "Copy")
+        self.clear_button = QPushButton("Clear")
+        copy = QPushButton("Copy")
         self.undo_button.clicked.connect(lambda: self.edit.emit("undo"))
         self.clear_button.clicked.connect(lambda: self.edit.emit("clear"))
         copy.clicked.connect(lambda: QGuiApplication.clipboard().setText(self.session.robot(self.name.text())))
@@ -663,10 +724,18 @@ class RecorderPane(QWidget):
         foot.addWidget(plain_label("Test name", "name_label"))
         self.name = QLineEdit("Recorded Test")
         foot.addWidget(self.name, 1)
-        save = QPushButton(icon("save", theme["ink"]), "Save...")
+        save = QPushButton("Save...")
+        save.setObjectName("primary")
         save.clicked.connect(self.save)
         foot.addWidget(save)
         layout.addLayout(foot)
+        self.icons = [(self.record_button, "record", "rec"), (self.undo_button, "undo", "ink2"),
+                      (self.clear_button, "clear", "ink2"), (copy, "copy", "ink2"), (save, "save", "accent_ink")]
+        self.retheme()
+
+    def retheme(self):
+        for button, name, key in self.icons:
+            button.setIcon(icon(name, self.t[key]))
 
     def _remove_selected(self):
         row = self.lines.currentRow()
@@ -706,12 +775,25 @@ ACT_HINT = "Act: click to tap - drag to swipe - type, then Enter - right-click t
 INSPECT_HINT = "Inspect: click to select (nothing runs on the device) - Ctrl+1 returns to Act"
 
 
+def card(widget):
+    """A pane on the window's gutter: a rounded panel with a hairline border."""
+    frame = QFrame()
+    frame.setObjectName("card")
+    layout = QVBoxLayout(frame)
+    layout.setContentsMargins(1, 1, 1, 1)
+    layout.addWidget(widget)
+    return frame
+
+
 class MainWindow(QMainWindow):
-    def __init__(self, session, worker, device_name="", platform="android"):
+    def __init__(self, session, worker, device_name="", platform="android", settings=None):
         super().__init__()
         self.session, self.worker, self.platform = session, worker, platform
-        self.live, self.pending = False, 0
-        self.t = apply_theme(QApplication.instance())
+        self.live, self.pending, self._icons = False, 0, []
+        self.settings = settings if settings is not None else QSettings("MaestroLibrary", "Studio")
+        mode = self.settings.value("theme", "system")
+        self.theme_mode = mode if mode in THEME_MODES else "system"
+        self.t = apply_theme(QApplication.instance(), self.theme_mode)
         self.setWindowTitle(f"MaestroLibrary Studio - {device_name} (keep Robot runs off this device while it is open)")
         self.device = DeviceView(self.t)
         self.inspector = InspectorPane()
@@ -726,12 +808,16 @@ class MainWindow(QMainWindow):
         column.addWidget(self.hint)
         device_pane.setMinimumWidth(440)
         split = QSplitter()
-        for widget, stretch in ((device_pane, 4), (self.inspector, 3), (self.recorder, 3)):
+        split.setHandleWidth(10)
+        for widget, stretch in ((device_pane, 4), (card(self.inspector), 3), (card(self.recorder), 3)):
             split.addWidget(widget)
             split.setStretchFactor(split.count() - 1, stretch)
         split.setSizes([580, 420, 480])                  # the device screen leads
         split.setChildrenCollapsible(False)
-        self.setCentralWidget(split)
+        ground = QWidget(); ground.setObjectName("ground")
+        outer = QVBoxLayout(ground); outer.setContentsMargins(10, 10, 10, 10)
+        outer.addWidget(split)
+        self.setCentralWidget(ground)
         self.hover = plain_label("", "hover")
         self.message = plain_label("", "message")
         self.statusBar().addWidget(self.message, 1)
@@ -762,23 +848,22 @@ class MainWindow(QMainWindow):
         bar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         bar.setIconSize(QSize(16, 16))
         self.addToolBar(bar)
-        ink = self.t["shell_ink"]
         bar.addWidget(plain_label("MaestroLibrary Studio", "product"))
         self.dot = plain_label("", "dot")
         bar.addWidget(self.dot)
         self.state = plain_label(f"{device_name}: connecting", "state")
         bar.addWidget(self.state)
-        self._dot("ink2")
+        self._dot("ink3")
         bar.addSeparator()
         modes = QActionGroup(self); modes.setExclusive(True)
-        self.act_mode = QAction(icon("act", ink), "Act", self, checkable=True, checked=True)
+        self.act_mode = self._iconed(QAction("Act", self, checkable=True, checked=True), "act")
         self.act_mode.setToolTip("Click, drag and type act on the device and are recorded")
-        self.inspect_mode = QAction(icon("inspect", ink), "Inspect", self, checkable=True)
+        self.inspect_mode = self._iconed(QAction("Inspect", self, checkable=True), "inspect")
         self.inspect_mode.setToolTip("Click selects an element; nothing runs on the device")
         for action, mode in ((self.act_mode, "act"), (self.inspect_mode, "inspect")):
             modes.addAction(action); bar.addAction(action)
             action.triggered.connect(lambda _=False, m=mode: self._mode(m))
-        self.handles = QAction(icon("grid", ink), "Elements", self, checkable=True)
+        self.handles = self._iconed(QAction("Elements", self, checkable=True), "grid")
         self.handles.setToolTip("Outline every element a locator can find")
         self.handles.toggled.connect(lambda on: (setattr(self.device, "handles", on), self.device.update()))
         bar.addAction(self.handles)
@@ -788,15 +873,33 @@ class MainWindow(QMainWindow):
                                       ("back", "back", "Back", "Go Back (Android)"),
                                       ("hide_keyboard", "keyboard", "Keyboard", "Hide Keyboard"),
                                       ("screenshot", "camera", "Screenshot", "Capture Page Screenshot")):
-            action = QAction(icon(name, ink), text, self)
+            action = self._iconed(QAction(text, self), name)
             action.setToolTip(tip)
             action.triggered.connect(lambda _=False, k=kind: (self.device.flush_typing(), self.submit(k, {})))
             action.setEnabled(not (kind == "back" and self.platform == "ios"))
             bar.addAction(action)
-        self.secret = QAction(icon("lock", ink), "Secret", self, checkable=True)
+        self.secret = self._iconed(QAction("Secret", self, checkable=True), "lock")
         self.secret.setToolTip("Typed text is recorded as ${PASSWORD} and never shown")
         self.secret.toggled.connect(lambda on: (setattr(self.device, "secret", on), self.device.update()))
         bar.addAction(self.secret)
+        bar.addSeparator()
+        themes = QMenu("Theme", self)
+        group = QActionGroup(self); group.setExclusive(True)
+        self.theme_actions = {}
+        for mode in THEME_MODES:
+            action = themes.addAction(mode.capitalize())
+            action.setCheckable(True); action.setChecked(mode == self.theme_mode)
+            action.triggered.connect(lambda _=False, m=mode: self.set_theme(m))
+            group.addAction(action)
+            self.theme_actions[mode] = action
+        self.theme_button = QToolButton()
+        self.theme_button.setText("Theme")
+        self.theme_button.setToolTip("Theme: follow the system, or always light or dark")
+        self.theme_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.theme_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.theme_button.setMenu(themes)
+        self._iconed(self.theme_button, "theme")
+        bar.addWidget(self.theme_button)
 
     def _mode(self, mode):
         self.hint.setText(ACT_HINT if mode == "act" else INSPECT_HINT)
@@ -831,6 +934,26 @@ class MainWindow(QMainWindow):
     def error(self, text):
         self.message.setText(text)
         self.message.setStyleSheet(f"color: {self.t['rec']};")       # stays until the next step works
+
+    def _iconed(self, target, name, key="ink2"):
+        """Gives an action or button a theme-following icon whose checked state uses the accent."""
+        self._icons.append((target, name, key))
+        target.setIcon(icon(name, self.t[key], self.t["accent"]))
+        return target
+
+    def set_theme(self, mode):
+        """System, light or dark; applied at once and remembered for the next start."""
+        self.theme_mode = mode
+        self.settings.setValue("theme", mode)
+        self.t.clear()
+        self.t.update(apply_theme(QApplication.instance(), mode))      # the panes share this dict
+        for target, name, key in self._icons:
+            target.setIcon(icon(name, self.t[key], self.t["accent"]))
+        self.theme_actions[mode].setChecked(True)
+        self.recorder.retheme()
+        self.recorder.show_lines(self.session.lines)
+        self._dot("ok" if self.live else "ink3")
+        self.device.update()
 
     def _dot(self, key):
         self.dot.setPixmap(icon("record", self.t[key]).pixmap(14, 14))
