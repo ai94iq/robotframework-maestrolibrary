@@ -122,6 +122,10 @@ class SessionTest(unittest.TestCase):
         self.s.act("click", 500, 200, tree=self.s.tree())
         self.assertEqual(self.lib.ran, [("click_element", ["id=com.app:id/search"])])
 
+    def test_screenshot_is_recorded_without_running(self):
+        self.assertEqual(self.s.act("screenshot"), "Capture Page Screenshot")
+        self.assertEqual(self.lib.ran, [])
+
     def test_blank_space_records_point(self):
         self.assertTrue(self.s.act("click", 500, 2300).startswith(r"Click Element    point\=46%,96%"))
 

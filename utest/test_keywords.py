@@ -338,6 +338,13 @@ class ScreenshotKeywordsTest(KeywordTest):
         outdir.start().return_value.get_variable_value.return_value = self.tmp
         self.addCleanup(outdir.stop)
 
+    def test_output_dir_outside_a_robot_run_is_the_working_directory(self):
+        from robot.libraries.BuiltIn import RobotNotRunningError
+        from MaestroLibrary.keywords._screenshot import output_dir
+        with mock.patch("MaestroLibrary.keywords._screenshot.BuiltIn") as builtin:
+            builtin.return_value.get_variable_value.side_effect = RobotNotRunningError("no context")
+            self.assertEqual(output_dir(), os.getcwd())
+
     def test_capture_element_screenshot_crops_on_the_element(self):
         path = self.run_kw("capture_element_screenshot", "id=pin", "pin.png")
         base = os.path.join(self.tmp, "pin").replace(os.sep, "/")

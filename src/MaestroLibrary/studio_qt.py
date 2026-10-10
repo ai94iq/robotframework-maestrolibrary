@@ -251,12 +251,14 @@ class StreamReader(QThread):
 THEMES = {
     "light": {"ground": "#e9ecf1", "panel": "#ffffff", "raised": "#f4f6f9", "hover": "#eceff4", "line": "#d6dae3",
               "ink": "#0f1216", "ink2": "#5a6372", "ink3": "#757d8c", "accent": "#4361ee", "accent_soft": "#e4e9fd", "accent_text": "#3a56d9",
-              "accent_ink": "#ffffff", "rec": "#e5484d", "rec_soft": "#fde4e5", "ok": "#15803d", "ok_soft": "#dcf5e5",
-              "warn": "#b45309", "warn_soft": "#fdebd0", "select": "#4361ee", "screen": "#0b0d10", "shadow_alpha": 70, "shadow_blur": 28, "shadow_y": 6, "edge": "#d6dae3"},
+              "accent_ink": "#ffffff", "rec": "#e5484d", "rec_soft": "#fde4e5", "ok": "#137538", "ok_soft": "#dcf5e5",
+              "warn": "#b45309", "warn_soft": "#fdebd0", "select": "#4361ee", "screen": "#0b0d10", "shadow_alpha": 70, "shadow_blur": 28, "shadow_y": 6, "edge": "transparent",
+              "card_line": "transparent"},
     "dark": {"ground": "#050608", "panel": "#181c24", "raised": "#20252f", "hover": "#2a303c", "line": "#303746",
              "ink": "#f5f7fa", "ink2": "#a3acba", "ink3": "#7d8696", "accent": "#7b93ff", "accent_soft": "#252d4d", "accent_text": "#7b93ff",
              "accent_ink": "#0d0f13", "rec": "#ff6369", "rec_soft": "#3a1d20", "ok": "#3ecf8e", "ok_soft": "#16342a",
-             "warn": "#f5b14c", "warn_soft": "#3b2d14", "select": "#7b93ff", "screen": "#000000", "shadow_alpha": 230, "shadow_blur": 44, "shadow_y": 12, "edge": "#3d4555"},
+             "warn": "#f5b14c", "warn_soft": "#3b2d14", "select": "#7b93ff", "screen": "#000000", "shadow_alpha": 0, "shadow_blur": 44, "shadow_y": 12, "edge": "#3d4555",
+             "card_line": "#303746"},
 }
 THEME_MODES = ("system", "light", "dark")
 
@@ -273,7 +275,8 @@ def theme_name(app, mode="system"):
 QSS = """
 QWidget {{ color: {ink}; font-size: 13px; }}
 QMainWindow, QWidget#ground {{ background: {ground}; }}
-QFrame#card {{ background: {panel}; border: 1px solid {line}; border-top-color: {edge}; border-radius: 14px; }}
+/* cards lift on a shadow in light and on a crisp edge in dark, never both (impeccable) */
+QFrame#card {{ background: {panel}; border: 1px solid {card_line}; border-top-color: {edge}; border-radius: 14px; }}
 QToolBar#shell {{ background: {panel}; border: 0; border-bottom: 1px solid {line}; padding: 10px 16px; spacing: 4px; }}
 QToolBar#shell QToolButton, QFrame#controls QToolButton {{ background: transparent; border: 1px solid transparent; border-radius: 8px;
     padding: 6px 10px; color: {ink}; }}
@@ -282,7 +285,7 @@ QToolBar#shell QToolButton:checked, QFrame#controls QToolButton:checked {{ backg
 QToolBar#shell QToolButton:disabled, QFrame#controls QToolButton:disabled {{ color: {ink3}; }}
 QToolBar#shell QToolButton:focus, QFrame#controls QToolButton:focus {{ border-color: {accent}; }}
 QFrame#controls QToolButton {{ padding: 4px 6px; font-size: 12px; }}
-QFrame#controls {{ background: {panel}; border: 1px solid {line}; border-top-color: {edge}; border-radius: 12px; }}
+QFrame#controls {{ background: {panel}; border: 1px solid {card_line}; border-top-color: {edge}; border-radius: 12px; }}
 QToolButton#tool, QToolButton#disclosure {{ background: transparent; border: 1px solid transparent; border-radius: 6px;
     padding: 4px; color: {ink2}; }}
 QToolButton#disclosure {{ padding: 4px 6px; font-size: 12px; font-weight: 600; }}
@@ -1345,6 +1348,7 @@ def floating(frame, theme):
 
 def shade(frame, theme):
     effect = frame.graphicsEffect()
+    effect.setEnabled(theme["shadow_alpha"] > 0)       # dark cards use an edge instead
     effect.setColor(QColor(0, 0, 0, theme["shadow_alpha"]))
     effect.setBlurRadius(theme["shadow_blur"])      # dark needs a wider, deeper shadow to show on a dark ground
     effect.setOffset(0, theme["shadow_y"])

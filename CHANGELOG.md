@@ -12,6 +12,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions: [Sem
   `studio` extra). A device
   switcher for several connected devices, a theme button (System, Light, Dark; remembered) and
   keyboard shortcuts.
+### Fixed
+- `Capture Page Screenshot` and the other screenshot keywords work outside a Robot run (plain Python,
+  Studio): they save to the working directory instead of failing with `RobotNotRunningError`.
 ### Changed
 - Python 3.12 or newer is required (3.10 reached end of life on 2026-10-01; 3.12 is supported until
   2028-10).

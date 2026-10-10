@@ -167,6 +167,8 @@ class Session:
                 return self._run("swipe_by_percent", [*pct(self.tree(), x, y), *pct(self.tree(), x2, y2)])
             if kind == "launch":
                 return self._run("open_application", [self.app_id or self.lib.app_id])
+            if kind == "screenshot":      # the test takes it when it runs; here it would only leave a stray file
+                return self._record(SIMPLE_KINDS[kind], [])
             return self._run(SIMPLE_KINDS[kind], [])
 
     def _type(self, text, secret):

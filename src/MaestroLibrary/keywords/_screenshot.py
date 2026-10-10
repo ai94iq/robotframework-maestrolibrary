@@ -8,7 +8,7 @@ import threading
 from datetime import timedelta
 
 from robot.api import logger
-from robot.libraries.BuiltIn import BuiltIn
+from robot.libraries.BuiltIn import BuiltIn, RobotNotRunningError
 from robotlibcore import keyword
 
 from ..locators import to_selector
@@ -19,15 +19,23 @@ EMBED = "EMBED"
 ADB_TIMEOUT_S = 60
 
 
+def output_dir():
+    """Robot's output directory; the working directory outside a Robot run (Studio, plain Python)."""
+    try:
+        return BuiltIn().get_variable_value("${OUTPUT DIR}", os.getcwd())
+    except RobotNotRunningError:
+        return os.getcwd()
+
+
 def output_path(filename):
-    path = os.path.join(BuiltIn().get_variable_value("${OUTPUT DIR}", os.getcwd()), filename)
+    path = os.path.join(output_dir(), filename)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     return path
 
 
 def log_link(path, label):
     """Logs a link to `path`; `label` is HTML in which ``{src}`` is replaced by the link target."""
-    outdir = BuiltIn().get_variable_value("${OUTPUT DIR}", os.getcwd())
+    outdir = output_dir()
     try:
         src = os.path.relpath(path, outdir).replace(os.sep, "/")
     except ValueError:  # Windows: path and output dir are on different drives
