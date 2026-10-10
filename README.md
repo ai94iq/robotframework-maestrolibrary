@@ -187,6 +187,10 @@ Maestro Cloud key), `inputRandom*`, clipboard commands (the copied text stays in
 Each `maestro mcp` process reinstalls Maestro's driver app on the device once, when it first
 connects (Maestro hard-codes it). The library keeps one process for the whole run.
 
+Tip: to let a coding agent look at the app while you write tests, register the same server with
+it, e.g. `claude mcp add maestro -- maestro mcp` for Claude Code. It opens its own session on
+the device, so keep it idle while a Robot run is going.
+
 ## Development
 ```
 python -m unittest discover -s utest                        # no device needed
