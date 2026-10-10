@@ -15,9 +15,6 @@ dependencies = [
     "robotframework>=7.5",
     "robotframework-pythonlibcore>=4.6.0",
 ]
-
-[project.optional-dependencies]
-convert = ["pyyaml>=6.0.3"]   # flow2robot
 classifiers = [
     "Framework :: Robot Framework",
     "Framework :: Robot Framework :: Library",
@@ -27,6 +24,9 @@ classifiers = [
     "Operating System :: OS Independent",
     "Typing :: Typed",
 ]
+
+[project.optional-dependencies]
+convert = ["pyyaml>=6.0.3"]   # flow2robot
 
 [project.urls]
 Homepage = "https://github.com/ai94iq/robotframework-maestrolibrary"
