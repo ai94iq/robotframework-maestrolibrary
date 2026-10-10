@@ -60,8 +60,9 @@ def locate(tree, x, y):
 class Session:
     """Runs studio actions on the device through MaestroLibrary and records the matching Robot lines."""
 
-    def __init__(self, lib, app_id=None):
+    def __init__(self, lib, app_id=None, reader=None):
         self.lib, self.app_id, self.lines, self.recording = lib, app_id, [], True
+        self.reader = reader              # a faster tree read (driver.DriverReader), or None for inspect_screen
         self.lock = threading.RLock()   # one Maestro session: one action at a time
         self._tree, self._last_locator = None, None
 
@@ -69,7 +70,7 @@ class Session:
         """The current screen (nested and flat) and its size; read again after a step, or when `fresh`."""
         tree = self._tree
         if fresh or tree is None:
-            screen = self.lib.screen()                      # seconds on a phone: outside the lock
+            screen = self._screen()                         # up to seconds on a phone: outside the lock
             elements = list(walk(screen))
             root = max((parse_bounds(e.get("b")) or (0, 0, 0, 0) for e in elements),
                        key=lambda b: b[2] * b[3], default=(0, 0, 0, 0))
@@ -78,6 +79,14 @@ class Session:
             with self.lock:
                 self._tree = tree
         return tree
+
+    def _screen(self):
+        if not self.reader:
+            return self.lib.screen()
+        try:
+            return self.reader.screen()
+        except Exception:                 # the driver is not up yet, or moved: Maestro's own read still works
+            return self.lib.screen()
 
     def _run(self, keyword, args, comment=""):
         self.lib.run_keyword(keyword, list(args))          # raises: nothing is recorded
@@ -221,6 +230,7 @@ def main(argv=None):
         print(f'Studio needs its extra: pip install "robotframework-maestrolibrary[studio]" ({err})', file=sys.stderr)
         return 2
     from . import MaestroLibrary
+    from .driver import DriverReader
     from .stream import ScrcpyStream
 
     app = QApplication.instance() or QApplication(sys.argv[:1])
@@ -229,10 +239,11 @@ def main(argv=None):
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("MaestroLibrary.Studio")
     app.setWindowIcon(studio_qt.app_icon())
     lib = MaestroLibrary(device=args.device, run_on_failure="Nothing", logcat=False)
-    window = thread = touch_thread = None
+    window = thread = touch_thread = reader = None
     try:
         device = lib.device_id()
-        session = Session(lib, args.app)
+        reader = DriverReader(lib) if lib.platform == "android" and lib.adb() else None
+        session = Session(lib, args.app, reader=reader)
         worker = studio_qt.ActionWorker(session)
         thread = QThread()
         worker.moveToThread(thread)
@@ -270,6 +281,8 @@ def main(argv=None):
             if running:
                 running.quit()
                 running.wait(10000)
+        if reader:
+            reader.close()
         lib.mcp.close()
 
 

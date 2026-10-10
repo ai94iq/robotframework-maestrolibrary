@@ -7,7 +7,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions: [Sem
 - Studio: `python -m MaestroLibrary.studio` (the `studio` extra: PySide6, PyAV) shows the device
   screen live (scrcpy's H.264 stream) and records a Robot test while you act on it: click, type,
   drag, right-click assertions, control-bar steps; Inspect mode shows suggested locators and
-  attributes. On Android, touch steps go through adb and are recorded in about 0.15 s. A device
+  attributes. On Android, touch steps go through adb and are recorded in about 0.15 s, and the
+  element tree is read from Maestro's on-device driver (0.45 s against 2.2 s; `grpcio` joins the
+  `studio` extra). A device
   switcher for several connected devices, a theme button (System, Light, Dark; remembered) and
   keyboard shortcuts.
 ### Changed

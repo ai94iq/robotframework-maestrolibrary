@@ -6,6 +6,7 @@
 - Run: `python -m MaestroLibrary.studio [--device ID] [--app APP_ID] [--max-size PX] [--video-encoder NAME]`; `pip install -e ".[studio]"` installs PySide6 6.12.0 and av 19.0.1.
 - Code: `locators.py` (hit testing, locator choice), `studio.py` (`Session`, `main`), `stream.py` (`ScrcpyStream`), `studio_qt.py` (window and workers), `studio_icons.py` (Lucide 1.55.0).
 - Threads: the UI; `ActionWorker` runs Maestro steps and screen reads in order (at most one read queued); a second `ActionWorker` sends Android touch steps (tap, long press, swipe, Back) with adb and does line edits; `StreamReader` decodes the scrcpy stream, keeping the newest frame.
+- Android tree reads go to Maestro's driver over gRPC (`driver.DriverReader`, an adb forward to device port 7001) and fall back to MCP `inspect_screen`.
 - One `maestro mcp` process serves every device: a device switch points the library at the new device and restarts only the live view.
 
 ## Run

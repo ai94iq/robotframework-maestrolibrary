@@ -231,7 +231,7 @@ and Python steps are not Maestro commands, so they are not in the flow; waiting 
 
 ## Studio: record a test on a live device
 ```
-pip install "robotframework-maestrolibrary[studio]"      # PySide6 and PyAV
+pip install "robotframework-maestrolibrary[studio]"      # PySide6, PyAV and grpcio
 python -m MaestroLibrary.studio --app com.android.vending
 ```
 A window shows the device screen live, and every action you take on it runs on the device while
@@ -259,6 +259,9 @@ the GAP lines as test id requests before the test joins a suite.
   screen to settle. The recorded line is the same either way, and the locator is checked when the
   test runs. Measured on an Android 15 phone: the line is recorded 0.13 to 0.17 s after a click and
   the screen changes 0.33 to 0.43 s after it (a Maestro tap took 4 to 7 s).
+- On Android, the element tree is read from Maestro's on-device driver (its gRPC `viewHierarchy`,
+  through an adb forward): 0.45 s on an Android 15 phone against 2.2 s for MCP's `inspect_screen`,
+  which stays the fallback.
 - With several devices connected, the device box in the toolbar lists them (phones and emulators
   marked apart); picking one moves Studio to it in place and keeps the recorded lines.
 - The theme button in the toolbar cycles System, Light and Dark; the choice is remembered between
