@@ -12,7 +12,7 @@ from robot.libraries.BuiltIn import BuiltIn, RobotNotRunningError
 from robotlibcore import keyword
 
 from ..locators import to_selector
-from ..mcp import MaestroError
+from ..mcp import NO_WINDOW, MaestroError
 from ._device import maestro_path
 
 EMBED = "EMBED"
@@ -136,7 +136,7 @@ class ScreenshotKeywords:
         self._recording = subprocess.Popen(
             [adb, "-s", self.lib.device, "shell", "screenrecord", "--time-limit",
              str(int(time_limit.total_seconds())), self._remote],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **NO_WINDOW)
 
     @keyword
     def stop_screen_recording(self, filename: str | None = None) -> str:
@@ -158,13 +158,13 @@ class ScreenshotKeywords:
             # screenrecord writes a playable file only when it is interrupted, not killed. Matching
             # its unique file path leaves other screenrecord processes on the device alone.
             subprocess.run([adb, "-s", device, "shell", "pkill", "-INT", "-f", remote],
-                           capture_output=True, timeout=ADB_TIMEOUT_S)
+                           capture_output=True, timeout=ADB_TIMEOUT_S, **NO_WINDOW)
             try:
                 recording.wait(timeout=ADB_TIMEOUT_S)
             except subprocess.TimeoutExpired:
                 recording.kill()
             pull = subprocess.run([adb, "-s", device, "pull", remote, path],
-                                  capture_output=True, text=True, timeout=ADB_TIMEOUT_S)
+                                  capture_output=True, text=True, timeout=ADB_TIMEOUT_S, **NO_WINDOW)
         except subprocess.TimeoutExpired:
             raise AssertionError(f"adb did not answer within {ADB_TIMEOUT_S} s while stopping the recording. "
                                  f"It may still be on the device at {remote}.") from None
@@ -172,7 +172,8 @@ class ScreenshotKeywords:
             raise AssertionError(f"Could not copy the recording from the device: {pull.stderr.strip()}. "
                                  f"The recording is kept on the device at {remote}.")
         try:
-            subprocess.run([adb, "-s", device, "shell", "rm", "-f", remote], capture_output=True, timeout=ADB_TIMEOUT_S)
+            subprocess.run([adb, "-s", device, "shell", "rm", "-f", remote], capture_output=True,
+                           timeout=ADB_TIMEOUT_S, **NO_WINDOW)
         except subprocess.TimeoutExpired:
             logger.warn(f"The recording was saved, but adb did not answer while deleting {remote} on the device.")
         log_link(path, "Screen recording")

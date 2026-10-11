@@ -44,6 +44,9 @@ class LogcatTest(AndroidTest):
         self.lib.logcat.ensure()  # every keyword calls it; one stream per test
         self.assertEqual(self.sp.Popen.call_count, 1)
         self.assertEqual(self.sp.Popen.call_args.args[0], LOGCAT)
+        # No console window per child on Windows (the Studio .exe has none of its own); nothing elsewhere.
+        self.assertEqual(self.sp.Popen.call_args.kwargs.get("creationflags"),
+                         subprocess.CREATE_NO_WINDOW if os.name == "nt" else None)
         path = self.sp.Popen.call_args.kwargs["stdout"].name
         self.assertEqual(os.path.basename(path), "1-Atest.Android.Crash_a_b_.txt")
         self.lib.logcat.end_test(item("x", suite), None)

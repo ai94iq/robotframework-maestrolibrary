@@ -6,7 +6,7 @@ import socket
 import subprocess
 import time
 
-from .mcp import find_exe
+from .mcp import NO_WINDOW, find_exe
 
 REMOTE = "/data/local/tmp/scrcpy-server.jar"
 SAFE_SERIAL = re.compile(r"[\w.:-]+")
@@ -18,7 +18,8 @@ def server_file():
     scrcpy = find_exe("scrcpy")        # PATH only, never the working directory
     if not scrcpy:
         raise RuntimeError("scrcpy is not on PATH; the live view needs it (recording still works).")
-    answer = subprocess.run([scrcpy, "--version"], capture_output=True, text=True, errors="replace", timeout=10).stdout
+    answer = subprocess.run([scrcpy, "--version"], capture_output=True, text=True, errors="replace", timeout=10,
+                            **NO_WINDOW).stdout
     version = re.match(r"scrcpy (\d+(?:\.\d+)*)\b", answer)
     if not version:
         raise RuntimeError(f"{scrcpy} does not answer like scrcpy, so it is not used.")
@@ -52,7 +53,7 @@ class ScrcpyStream:
         self._pending = b""
 
     def _adb(self, *args):
-        return subprocess.run([self.adb, "-s", self.device, *args], capture_output=True, timeout=30, check=True)
+        return subprocess.run([self.adb, "-s", self.device, *args], capture_output=True, timeout=30, check=True, **NO_WINDOW)
 
     def start(self):
         path, version = server_file()
@@ -66,7 +67,7 @@ class ScrcpyStream:
              "com.genymobile.scrcpy.Server", version, f"scid={self.scid}", "tunnel_forward=true", "audio=false", "control=false",
              "raw_stream=true", "video_codec=h264", f"max_size={self.max_size}"]
             + ([f"video_encoder={self.video_encoder}"] if self.video_encoder else []),
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **NO_WINDOW)
         # adb accepts the forwarded connection before the server listens, then closes it: the server is up
         # only once video bytes arrive (measured: about 1.5 s on an Android 15 phone).
         for _ in range(60):

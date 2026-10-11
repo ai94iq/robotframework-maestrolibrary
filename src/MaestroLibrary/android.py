@@ -5,7 +5,7 @@ import re
 import subprocess
 
 from .keywords._screenshot import log_link, output_path
-from .mcp import verified_exe
+from .mcp import NO_WINDOW, verified_exe
 
 
 def end_process(proc):
@@ -60,7 +60,7 @@ class Logcat:
         name = re.sub(r"[^\w.-]+", "_", self._name)[:100]
         path = output_path(os.path.join("logcat", f"{next(self._index)}-{name}.txt"))
         self._file = open(path, "wb")
-        self._proc = subprocess.Popen(command, stdout=self._file, stderr=subprocess.STDOUT)
+        self._proc = subprocess.Popen(command, stdout=self._file, stderr=subprocess.STDOUT, **NO_WINDOW)
         log_link(path, "logcat")
 
     def _command(self):
@@ -108,7 +108,7 @@ class Mirror:
         log = output_path(f"scrcpy-{safe}.log")
         with open(log, "wb") as out:  # scrcpy logs steadily; a file, unlike a pipe, never fills up
             try:
-                proc = subprocess.Popen(command, stdout=out, stderr=subprocess.STDOUT)
+                proc = subprocess.Popen(command, stdout=out, stderr=subprocess.STDOUT, **NO_WINDOW)
             except OSError:
                 raise AssertionError("scrcpy did not run: install scrcpy and put it on PATH.") from None
         try:

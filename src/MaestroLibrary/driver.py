@@ -9,6 +9,8 @@ import subprocess
 # Device XML: elements_from_xml refuses DOCTYPE and entity declarations before parsing (defusedxml's guard).
 import xml.etree.ElementTree as ET  # nosec B405
 
+from .mcp import NO_WINDOW
+
 DRIVER_PORT = 7001                    # the driver's default port (MaestroDriverService)
 METHOD = "/maestro_android.MaestroDriver/viewHierarchy"
 MAX_BYTES = 64 << 20
@@ -65,7 +67,7 @@ class DriverReader:
         device = self.lib.device_id()
         self.close()
         answer = subprocess.run([self.lib.adb(), "-s", device, "forward", "tcp:0", f"tcp:{DRIVER_PORT}"],
-                                capture_output=True, text=True, timeout=10, check=True).stdout
+                                capture_output=True, text=True, timeout=10, check=True, **NO_WINDOW).stdout
         self.port = int(answer.strip())
         self._channel = grpc.insecure_channel(f"127.0.0.1:{self.port}",
                                               options=[("grpc.max_receive_message_length", MAX_BYTES)])
@@ -84,5 +86,5 @@ class DriverReader:
             self._channel.close()
         if self.port and self.device:
             subprocess.run([self.lib.adb(), "-s", self.device, "forward", "--remove", f"tcp:{self.port}"],
-                           capture_output=True, timeout=10)
+                           capture_output=True, timeout=10, **NO_WINDOW)
         self.port = self._call = self._channel = None

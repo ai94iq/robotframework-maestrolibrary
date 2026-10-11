@@ -8,6 +8,9 @@ import re
 import subprocess
 import threading
 
+# Windows: children of a windowed app (the Studio .exe) would each open a console window otherwise.
+NO_WINDOW = {"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}
+
 VIEWER_NOTICE = "Maestro Viewer is available"
 PROBE_TIMEOUT_S = 10
 
@@ -56,7 +59,8 @@ def verified_exe(name, args, pattern, timeout=PROBE_TIMEOUT_S):
     if not exe:
         raise AssertionError(f"{name} not found on PATH.")
     try:
-        out = subprocess.run([exe, *args], capture_output=True, text=True, errors="replace", timeout=timeout).stdout
+        out = subprocess.run([exe, *args], capture_output=True, text=True, errors="replace", timeout=timeout,
+                             **NO_WINDOW).stdout
     except subprocess.TimeoutExpired:
         raise AssertionError(f"{exe} did not answer within {timeout:g} s, so it was stopped and is not used.") from None
     except OSError as err:
@@ -98,7 +102,7 @@ class MaestroMCP:
         self._proc = subprocess.Popen(
             [exe, *self.command[1:]],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            text=True, encoding="utf-8", errors="replace", env=env,
+            text=True, encoding="utf-8", errors="replace", env=env, **NO_WINDOW,
         )
         self._lines = queue.Queue()
         threading.Thread(target=self._pump, args=(self._proc.stdout, self._lines.put), daemon=True).start()
@@ -143,7 +147,7 @@ class MaestroMCP:
             taskkill = find_exe("taskkill") if os.name == "nt" else None
             if taskkill:
                 # proc is maestro.bat; /T also ends the JVM it started.
-                subprocess.run([taskkill, "/F", "/T", "/PID", str(proc.pid)], capture_output=True)
+                subprocess.run([taskkill, "/F", "/T", "/PID", str(proc.pid)], capture_output=True, **NO_WINDOW)
             else:
                 proc.kill()
             proc.wait()

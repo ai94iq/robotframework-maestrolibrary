@@ -6,6 +6,8 @@ from datetime import timedelta
 from robot.api import logger
 from robotlibcore import keyword
 
+from ..mcp import NO_WINDOW
+
 
 PERMISSION_STATES = ("allow", "deny", "unset")
 
@@ -207,6 +209,7 @@ class ApplicationManagementKeywords:
             result = subprocess.run(
                 [adb, "-s", self.lib.device_id(), "shell", command, *args],
                 capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout.total_seconds(),
+                **NO_WINDOW,
             )
         except subprocess.TimeoutExpired:
             raise AssertionError(f"adb shell {command} timed out after {timeout.total_seconds():g} s.") from None

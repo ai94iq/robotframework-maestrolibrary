@@ -11,7 +11,7 @@ from robotlibcore import DynamicCore
 from .keywords import ApplicationManagementKeywords, DeviceKeywords, ElementKeywords, KeyeventKeywords, RunOnFailureKeywords, ScreenshotKeywords, TouchKeywords, WaitingKeywords
 from .locators import matches, walk
 from .android import Logcat, Mirror
-from .mcp import MaestroError, MaestroMCP, verified_exe
+from .mcp import NO_WINDOW, MaestroError, MaestroMCP, verified_exe
 from .recorder import FlowRecorder
 
 __version__ = "0.5.0"
@@ -257,7 +257,7 @@ class MaestroLibrary(DynamicCore):
             return None
         try:
             done = subprocess.run([adb, "-s", self.device, "shell", *args], capture_output=True,
-                                  text=True, errors="replace", timeout=ADB_TIMEOUT_S)
+                                  text=True, errors="replace", timeout=ADB_TIMEOUT_S, **NO_WINDOW)
         except subprocess.TimeoutExpired:
             logger.warn(f"adb did not answer within {ADB_TIMEOUT_S} s while {purpose}; is the device responsive?")
             return None
