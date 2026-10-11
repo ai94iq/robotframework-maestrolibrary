@@ -13,7 +13,7 @@ There's no Appium server and no capabilities to manage. Maestro waits for the UI
 - [Locators](#locators)
 - [Coming from AppiumLibrary](#coming-from-appiumlibrary)
 - [Android logs and mirroring](#android-logs-and-mirroring)
-- [iOS (WIP)](#ios-wip)
+- [iOS](#ios)
 - [Converting between Maestro flows and Robot tests](#converting-between-maestro-flows-and-robot-tests)
 - [Studio: record a test on a live device](#studio-record-a-test-on-a-live-device)
 - [Maestro CLI coverage](#maestro-cli-coverage)
@@ -22,7 +22,7 @@ There's no Appium server and no capabilities to manage. Maestro waits for the UI
 ## Requirements
 - Python 3.12 or newer
 - Maestro CLI on PATH (`maestro --version`) and Java 17+
-- A running Android emulator or connected Android device, or an iOS simulator on a Mac (WIP, see iOS)
+- A running Android emulator or connected Android device, or an iOS simulator on a Mac (see iOS)
 - Android: `adb` (platform-tools) on PATH. `Open Application` uses it to wait for the app's
   window; `Execute Adb Shell`, screen recording and the logcat files need it. Without it, Open
   Application warns and returns as soon as Maestro does.
@@ -70,7 +70,7 @@ Visible/Enabled/Disabled, Text Should Be Visible, Element Text Should Be, Elemen
 (Not) Contain Text, Get Text, Get Element Attribute, Scroll Element Into View, Expect
 Element, Expect Text, the five Wait Until keywords, Swipe, Swipe By Percent, Scroll
 Down/Up, Tap, Long Press, Press Keycode, Capture Page Screenshot, Register Keyword To Run
-On Failure, Set Location, Landscape, Portrait, Click Alert Button (iOS: WIP).
+On Failure, Set Location, Landscape, Portrait, Click Alert Button (iOS: not tested yet).
 
 Differences:
 - `Open Application    <app id>    clear_state=False    stop_app=True`: no remote URL or
@@ -111,10 +111,9 @@ directory and linked in the log, so a crash's log survives the device's small ri
 for the whole run, show the device in a scrcpy window. Import arguments, a full suite and the run
 commands: [docs/logs-and-mirroring.md](https://github.com/ai94iq/robotframework-maestrolibrary/blob/main/docs/logs-and-mirroring.md).
 
-## iOS (WIP)
+## iOS
 Maestro 2.11.0 drives iOS **simulators only** (macOS with Xcode); it fails physical iPhones with
-"Physical iOS devices are not yet supported". Using an iOS device logs one warning that iOS
-support is WIP.
+"Physical iOS devices are not yet supported".
 
 Measured on an iPhone simulator (two runs on 2026-10-11):
 - element keys match Android: Flutter text in `a11y`, Semantics ids in `rid`; text and `id=`
@@ -125,14 +124,13 @@ Measured on an iPhone simulator (two runs on 2026-10-11):
 - `Kill Application`, `Clear Keychain` and `Hide Keyboard    key_name=Done` work;
 - `xcrun` is checked like adb (`xcrun --version` must answer `xcrun version <n>`) and accepted.
 
-`Start Screen Mirroring` does nothing on iOS (the Simulator window shows the screen).
-
 Android only, failing at once on iOS (from Maestro's docs): `Go Back` (iOS has no back button),
 `Press Key` Back / Power / Tab and `Press Keycode 4`, `Set Airplane Mode` (simulators have none),
 `Execute Adb Shell`, `Is Keyboard Shown`.
 
-Not checked on iOS yet: `Click Alert Button` (no alert appeared), permission names for
-`Set Application Permissions`, and which attributes `Get Element Attribute` sees.
+Not tested on iOS yet: `Click Alert Button` (no alert appeared), `Hide Keyboard` without
+`key_name`, `Start Screen Mirroring` (the Simulator window already shows the screen), permission
+names for `Set Application Permissions`, and which attributes `Get Element Attribute` sees.
 
 ## Converting between Maestro flows and Robot tests
 Record a flow in Maestro Studio, save its YAML, and convert it to a Robot test:

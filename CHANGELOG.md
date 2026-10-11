@@ -4,6 +4,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions: [Sem
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-10-11
+### Changed
+- iOS support is no longer marked WIP: it ran on an iOS simulator (element keys and locators,
+  typing, `Kill Application`, the simulator's log stream, screen recording, `Clear Keychain`,
+  `Hide Keyboard` with `key_name`), so the one-time "iOS support is WIP and untested" warning is
+  gone. Not tested on iOS yet: `Click Alert Button`, `Hide Keyboard` without `key_name`, and
+  screen mirroring.
+
 ## [0.6.2] - 2026-10-11
 ### Fixed
 - iOS `Stop Screen Recording`: when `xcrun simctl io recordVideo` exits without a video, the failure
