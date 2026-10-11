@@ -36,7 +36,9 @@ def pip(*args, env=None):
 def build_av(ffmpeg, env, work):
     """PyAV's wheel against our FFmpeg; on Windows and macOS repaired so the wheel holds the FFmpeg libraries."""
     built, fixed = os.path.join(work, "built"), os.path.join(work, "fixed")
-    extra = ([f"--config-settings=--build-option=--ffmpeg-dir={ffmpeg}"] if sys.platform == "win32" else [])
+    # Forward slashes: setuptools splits build options with shlex, which drops backslashes.
+    extra = ([f"--config-settings=--build-option=--ffmpeg-dir={ffmpeg.replace(os.sep, '/')}"]
+             if sys.platform == "win32" else [])
     pip("wheel", "--no-deps", "--no-binary", "av", f"av=={AV}", "-w", built, *extra, env=env)
     wheel = glob.glob(os.path.join(built, "av-*.whl"))[0]
     if sys.platform == "win32":
