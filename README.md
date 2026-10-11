@@ -258,11 +258,13 @@ the GAP lines as test id requests before the test joins a suite.
   encoder at up to 1080 px (`--max-size`; `--video-encoder` picks another encoder from
   `scrcpy --list-encoders`). Without it, or on an iOS simulator, the view refreshes with a
   screenshot after each step.
-- On Android with adb, taps, long presses, swipes and Back go to the device with `adb shell input`
-  and are recorded at once; typing, assertions and Launch run through Maestro, which waits for the
-  screen to settle. The recorded line is the same either way, and the locator is checked when the
-  test runs. Measured on an Android 15 phone: the line is recorded 0.13 to 0.17 s after a click and
-  the screen changes 0.33 to 0.43 s after it (a Maestro tap took 4 to 7 s).
+- On Android with adb, taps, long presses, swipes, Back and plain typing (letters, digits, spaces
+  and `. , _ @ : + = / -`) go to the device with `adb shell input` and are recorded at once. Other
+  text and secrets go through Maestro, as do assertions and Launch, which waits for the screen to
+  settle. The recorded line is the same either way, and the locator is checked when the test runs.
+  Measured on an Android 15 phone: the line is recorded 0.13 to 0.17 s after a click and the screen
+  changes 0.33 to 0.43 s after it (a Maestro tap took 4 to 7 s); typing takes about 0.3 s against
+  4 s through Maestro.
 - On Android, the element tree is read from Maestro's on-device driver (its gRPC `viewHierarchy`,
   through an adb forward): 0.45 s on an Android 15 phone against 2.2 s for MCP's `inspect_screen`,
   which stays the fallback.

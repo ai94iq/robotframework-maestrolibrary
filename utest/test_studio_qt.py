@@ -311,6 +311,9 @@ class WindowTest(WindowCase):
         window.busy = {"main": 0, "touch": 0}
         self.assertEqual(window._lane("click"), "touch")         # live, a tree, an Android touch step
         self.assertEqual(window._lane("launch"), "main")
+        self.assertEqual(window._lane("type", {"text": "wifi"}), "touch")     # plain typing goes by adb too
+        self.assertEqual(window._lane("type", {"text": "a;b"}), "main")       # Maestro types anything unsafe
+        self.assertEqual(window._lane("type", {"text": "wifi", "secret": True}), "main")
         window.busy["touch"] = 1
         self.assertEqual(window._lane("launch"), "touch")        # queued behind the running tap, not beside it
         window.busy = {"main": 1, "touch": 0}

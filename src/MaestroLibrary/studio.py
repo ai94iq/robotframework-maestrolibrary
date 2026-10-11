@@ -8,6 +8,7 @@ Do not run it while a Robot run uses the same device: Maestro allows one session
 import argparse
 import base64
 import json
+import re
 import sys
 import threading
 
@@ -24,6 +25,10 @@ KINDS = set(ELEMENT_KINDS) | set(SIMPLE_KINDS) | {"type", "swipe", "launch"}
 # Touch steps Studio sends to an Android device with adb: the device reacts in about 0.2 s, against 2 to 7 s for
 # Maestro, which waits for the screen to settle (measured on a phone). The recorded line is the same either way.
 TOUCH_KINDS = {"click", "long_press", "swipe", "back"}
+# Plain typing goes to adb as well (about 0.3 s against 4 s measured): `input text` hands its words to a device
+# shell, so only these characters qualify, and not a leading "-" (`input` reads it as an option); anything else is
+# typed by Maestro.
+ADB_TEXT = re.compile(r"[A-Za-z0-9 .,_@:+=/][A-Za-z0-9 .,_@:+=/-]*")
 KEYWORD_NAMES = {"click_element": "Click Element", "long_press": "Long Press",
                  "wait_until_page_contains_element": "Wait Until Page Contains Element",
                  "element_should_be_visible": "Element Should Be Visible",
@@ -41,6 +46,11 @@ def no_maestro_js(text):
     if "${" in text:
         raise ValueError("Maestro would evaluate ${...} in this text as JavaScript; leave out the ${.")
     return text
+
+
+def adb_text(text):
+    """`text` as the one argument for `adb shell input text` (a space is %s), or None when Maestro must type it."""
+    return text.replace(" ", "%s") if ADB_TEXT.fullmatch(text) else None
 
 
 def pct(tree, x, y):
@@ -115,9 +125,15 @@ class Session:
             return SEP.join(["Open Application", arg(self.app_id or getattr(self.lib, "app_id", "") or "")])
         return KEYWORD_NAMES[SIMPLE_KINDS[kind]]
 
-    def touch(self, kind):
-        """Whether `kind` runs through adb here: an Android touch step with adb available."""
-        return kind in TOUCH_KINDS and getattr(self.lib, "platform", None) == "android" and bool(self.lib.adb())
+    def touch(self, kind, text=None, secret=False, **_):
+        """Whether `kind` runs through adb here: an Android touch step, or plain safe typing, with adb available.
+        A secret never goes through adb: its arguments show in process lists and logs."""
+        if kind == "type":
+            if secret or adb_text(text or "") is None:
+                return False
+        elif kind not in TOUCH_KINDS:
+            return False
+        return getattr(self.lib, "platform", None) == "android" and bool(self.lib.adb())
 
     def _adb_input(self, *args):
         # every argument is an int or a fixed word: adb joins them into one device shell line
@@ -150,7 +166,10 @@ class Session:
         With `tree` (the screen the user acted on), an Android touch step goes through adb and is located on it."""
         if kind not in KINDS:
             raise ValueError(f"Unknown action {kind!r}.")
-        if tree is not None and self.touch(kind):
+        if kind == "type" and self.touch(kind, text, secret):      # no tree needed: it types where the focus is
+            with self.lock:
+                return self._type(str(text), False, adb=True)
+        if tree is not None and kind != "type" and self.touch(kind):
             with self.lock:
                 return self._touch(kind, tree, x, y, x2, y2)
         with self.lock:
@@ -171,9 +190,11 @@ class Session:
                 return self._record(SIMPLE_KINDS[kind], [])
             return self._run(SIMPLE_KINDS[kind], [])
 
-    def _type(self, text, secret):
+    def _type(self, text, secret, adb=False):
         """Types into the focused field; right after a click, the click line becomes Input Text/Password."""
-        if secret:
+        if adb:
+            self._adb_input("text", adb_text(text))
+        elif secret:
             try:
                 self.lib.run_commands({"inputText": text}, log=False)  # never logged
             except Exception as err:                                   # nor echoed in an error

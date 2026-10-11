@@ -1582,19 +1582,20 @@ class MainWindow(QMainWindow):
         self.recorder.say(f"Running {self.pending} step{'s' if self.pending > 1 else ''}")
         self.queued.append(self._preview(kind, kwargs))
         self._show_pending()
-        lane = self._lane(kind)
+        lane = self._lane(kind, kwargs)
         self.busy[lane] += 1
-        if lane == "touch" and self.session.touch(kind) and self.device.tree:
+        if lane == "touch" and kind != "type" and self.session.touch(kind) and self.device.tree:
             kwargs = dict(kwargs, tree=self.device.tree)            # located on what the user saw
         (self.touch if lane == "touch" else self.worker).request.emit(kind, kwargs)
 
-    def _lane(self, kind):
+    def _lane(self, kind, kwargs=None):
         """The worker for a step. Steps leave a lane only once it is idle, so they reach the device in order."""
         if not self.touch:
             return "main"
         if self.busy["touch"]:
             return "touch"                    # behind the touch steps still running (a Maestro step runs there too)
-        if self.busy["main"] or not (self.live and self.device.tree and self.session.touch(kind)):
+        if self.busy["main"] or not (self.live and self.device.tree
+                                         and self.session.touch(kind, **(kwargs or {}))):
             return "main"
         return "touch"
 

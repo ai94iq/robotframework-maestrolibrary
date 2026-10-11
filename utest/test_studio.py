@@ -120,6 +120,38 @@ class SessionTest(unittest.TestCase):
         self.s.act("type", text="wifi")
         self.assertEqual(self.s.lines, [r"Input Text    id\=com.app:id/search    wifi"])
 
+    def test_plain_typing_goes_through_adb_escaped_with_the_same_lines(self):
+        self.lib.adb_path = "adb"
+        self.s.act("click", 500, 200, tree=self.s.tree())
+        self.assertEqual(self.s.act("type", text="Wi-Fi 5.0, a_b@c:d+e=f/g"),
+                         r"Input Text    id\=com.app:id/search    Wi-Fi 5.0, a_b@c:d+e=f/g")
+        self.assertEqual(self.s.act("type", text="a b"), "Input Text Into Current Element    a b")
+        self.assertEqual(self.lib.shell[1:], [("input", "text", "Wi-Fi%s5.0,%sa_b@c:d+e=f/g"),
+                                              ("input", "text", "a%sb")])
+        self.assertEqual(self.lib.ran, [])
+
+    def test_text_outside_the_allowlist_or_secret_never_reaches_adb(self):
+        self.lib.adb_path = "adb"
+        for text in ["a;reboot", "a|b", "a&b", "$(id)", "`id`", "a'b", 'a"b', "a<b", "a>b", "a\\b", "50%",
+                     "a%sb", "a\nb", "a*b", "a#b", "a~b", "café", "", "${x}", "-d 1", "--x"]:
+            self.lib.ran, self.lib.shell = [], []
+            try:
+                self.s.act("type", text=text)
+            except ValueError:
+                pass                                                # ${ is refused outright
+            self.assertEqual(self.lib.shell, [], text)
+            self.assertEqual(self.s.touch("type", text), False, text)
+        self.lib.ran = []
+        self.s.act("type", text="hunter2", secret=True)
+        self.assertEqual(self.lib.shell, [])
+        self.assertEqual(self.lib.ran, [("run_commands", [{"inputText": "hunter2"}], False)])
+
+    def test_a_failed_adb_type_records_nothing(self):
+        self.lib.adb_path, self.lib.adb_fails = "adb", True
+        with self.assertRaisesRegex(AssertionError, "not found"):
+            self.s.act("type", text="wifi")
+        self.assertEqual(self.s.lines, [])
+
     def test_a_failed_adb_touch_records_nothing(self):
         self.lib.adb_path, self.lib.adb_fails = "adb", True
         with self.assertRaisesRegex(AssertionError, "not found"):
