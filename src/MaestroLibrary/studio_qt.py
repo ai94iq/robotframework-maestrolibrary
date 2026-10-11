@@ -1495,8 +1495,10 @@ class MainWindow(QMainWindow):
         self.dot = plain_label("", "dot")
         self.state = plain_label(f"{device_name}: connecting", "state")
         self.chevron = plain_label("", "chevron")
-        for widget in (self.device_icon, self.dot, self.state, self.chevron):
+        for widget in (self.device_icon, self.dot, self.state):
             row.addWidget(widget)
+        row.addStretch(1)                     # the pill is as wide as its menu: spare room goes before the chevron
+        row.addWidget(self.chevron)
         pill.clicked.connect(lambda: self._device_menu(pill))
         self._pill_menu()
         bar.addWidget(pill)
