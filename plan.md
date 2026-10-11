@@ -21,7 +21,8 @@ Current work: **MaestroLibrary Studio**. A native Qt (PySide6) window shows the 
 - [x] Task 8: desktop bundles (plan `C:/Users/abdoi/.claude/plans/logical-watching-lemon.md`): LGPL decode-only FFmpeg 9.0.2 (`packaging/build_ffmpeg.py`), PyAV built on it, PyInstaller (`packaging/studio.spec`, `packaging/build_bundle.py`), `--self-check` license gate, CI `bundles` job on every run and `release-bundles` on tags
 - [x] Task 8 Linux: verified in WSL (Ubuntu 26.04) and in CI; macOS arm64 green in CI (self-check only, no Mac here)
 - [x] Task 8 Windows and macOS Intel: all four bundles green in CI at `6431908` (user, 2026-10-11). Windows fixes: bash from PATH (`ede0d9e`), --ffmpeg-dir with forward slashes because setuptools shlex-splits build options (`ea3b2e3`), import libraries copied from bin to lib (`6431908`). Local Windows build: MSYS2 in C:\msys64 plus VS Build Tools 2022, `.exe` 61 MB, self-check LGPL with no GPL parts
-- [ ] Task 8: run the CI-built Windows `.exe` on this PC against the phone (Defender on), with timings
+- [x] Task 8: Windows `.exe` against the phone (2026-10-11): the first run opened a console window per adb or maestro call, and closing maestro's stopped the MCP server; fixed with CREATE_NO_WINDOW. Rebuilt: window after 4.3 s, live view and elements, no console windows, clean shutdown
+- [x] End to end 18 of 18 again after the review fixes and adb typing (2026-10-11, phone): typing after a tap records one `Input Text    text\=Search    maestro` line; the saved test replays with robot (PASS, 48 s)
 - [ ] Release 0.6.0 (only when the user says so)
 
 ## Measured (2026-10-10, Samsung A70, Android 15)

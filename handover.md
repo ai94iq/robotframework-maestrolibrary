@@ -31,12 +31,11 @@ python -m bandit -q -c pyproject.toml -r src
 
 ## Not verified yet
 
-- The Windows `.exe` against the phone (all four bundles are green in CI at `6431908`; the local build passes its self-check).
 - Studio on a real macOS desktop and on an iOS simulator (no Mac here).
 - The tree-read speed-ups after the code review fixes were measured before them; the end-to-end run was not repeated after `dde9ed4` (the user had Studio open on the phone).
 
 ## Next
 
-- Run the Windows `.exe` against the phone (local build: `build.cmd` in the session scratchpad, MSYS2 in C:\msys64); repeat the 18-check end to end after the review fixes.
+- Local Windows bundle build: `build.cmd` in the session scratchpad (MSYS2 in C:\msys64, VS Build Tools 2022).
 - iOS check, then fms-flutter-automation; release 0.6.0 only when the user says so, then raise the skill floors.
 - Assertions and Launch still run through Maestro (5 to 14 s).
