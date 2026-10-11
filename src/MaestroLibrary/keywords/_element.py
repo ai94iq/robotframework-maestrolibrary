@@ -39,7 +39,7 @@ class ElementKeywords:
         """Taps the button of a system alert or dialog whose text is exactly `button_name`.
 
         AppiumLibrary's iOS keyword; here it works on both platforms, as an exact-text tap.
-        iOS: WIP, needs testing on an iOS simulator.
+        iOS: not tested yet on a simulator.
 
         | `Click Alert Button` | Allow |
         """
@@ -74,7 +74,7 @@ class ElementKeywords:
 
         `key_name`, as in AppiumLibrary, is iOS only: there the keyboard key with that text (for
         example ``Done``) is tapped instead of Maestro's swipe. On Android it is ignored.
-        iOS: WIP, needs testing on an iOS simulator.
+        ``key_name=Done`` is tested on an iOS simulator; Maestro's swipe on iOS is not.
 
         On Android, Maestro's hideKeyboard always presses Back, which leaves the screen (or
         the app) when no keyboard is up, for example after a PIN field closed it by itself.

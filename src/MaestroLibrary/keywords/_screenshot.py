@@ -112,7 +112,7 @@ class ScreenshotKeywords:
     @keyword
     def start_screen_recording(self, time_limit: timedelta = timedelta(minutes=3)):
         """Starts recording the screen. Android: adb ``screenrecord``. iOS simulator: ``xcrun simctl
-        io recordVideo`` (WIP, needs testing on an iOS simulator).
+        io recordVideo`` (tested on an iOS simulator).
 
         ``time_limit`` is how long the recording may run (AppiumLibrary: ``timeLimit``). It
         defaults to 3 minutes, Android's maximum. Stop it and get the video with
@@ -195,7 +195,7 @@ class ScreenshotKeywords:
         """
         device = self.lib.device_id()
         if self.lib.platform != "android":
-            # WIP, needs testing: the iOS Simulator is already a window on this Mac.
+            # The iOS Simulator is already a window on the Mac.
             logger.info("The iOS Simulator window already shows the screen; nothing to mirror.")
             return
         self.lib.screen_mirror.start(device, control, options)
@@ -205,7 +205,7 @@ class ScreenshotKeywords:
         """Closes the scrcpy window. Does nothing when no mirroring is running, so it fits a teardown."""
         self.lib.screen_mirror.stop()
 
-    # WIP, needs testing on an iOS simulator (no Mac here): simctl's recordVideo, from Apple's docs.
+    # simctl's recordVideo; tested on an iOS simulator (2026-10-11).
     def _start_ios_recording(self, time_limit):
         xcrun = self.lib.xcrun()
         if not xcrun:

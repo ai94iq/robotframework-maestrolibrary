@@ -58,7 +58,7 @@ class ApplicationManagementKeywords:
     @keyword
     def clear_keychain(self):
         """Clears the iOS simulator's keychain (stored passwords, tokens), with Maestro's clearKeychain.
-        iOS only. WIP, needs testing on an iOS simulator.
+        iOS only.
         """
         self.lib.device_id()
         if self.lib.platform == "android":

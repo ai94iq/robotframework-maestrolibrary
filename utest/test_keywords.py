@@ -428,7 +428,7 @@ class ScreenshotKeywordsTest(KeywordTest):
         with self.assertRaisesRegex(AssertionError, "needs xcrun"):
             self.run_kw("start_screen_recording")
 
-    # WIP: the iOS recording runs simctl, from Apple's docs; not measured (no Mac).
+    # The iOS recording runs simctl; tested on an iOS simulator (2026-10-11).
     def ios_recording(self):
         self.lib.platform, self.lib.device, self.lib._xcrun = "ios", "SIM-1", "/usr/bin/xcrun"
         sp = mock.patch("MaestroLibrary.keywords._screenshot.subprocess")
@@ -477,8 +477,8 @@ class IOSTest(KeywordTest):
                 self.run_kw(name, *args)
         self.assertFalse(os.path.exists(self.log))  # nothing reached Maestro
 
-    # WIP: the iOS keywords below send what Maestro's docs describe; not run on iOS (no Mac).
-    def test_ios_keywords_wip(self):
+    # Clear Keychain and Hide Keyboard key_name are tested on an iOS simulator; Click Alert Button is not.
+    def test_ios_keywords(self):
         self.run_kw("clear_keychain")
         self.run_kw("click_alert_button", "Don't Allow")
         self.run_kw("hide_keyboard", "Done")

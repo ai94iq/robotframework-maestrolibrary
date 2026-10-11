@@ -22,7 +22,7 @@ def end_process(proc):
 
 class Logcat:
     """Streams the device log to one file per test, or per suite for suite setup and teardown:
-    adb logcat on Android, the simulator's `log stream` on iOS (WIP, needs testing).
+    adb logcat on Android, the simulator's `log stream` on iOS.
 
     The device's ring buffers hold a few hundred KiB, so a crash early in a long test can be gone
     by its end; a stream on disk keeps it. Robot calls the start/end methods (library listener).
@@ -68,7 +68,7 @@ class Logcat:
             adb = self.lib.adb()
             # -T 1 starts at the newest line and leaves the device's log alone (no -c).
             return [adb, "-s", self.lib.device, "logcat", "-v", "threadtime", "-T", "1"] if adb else None
-        # WIP, needs testing on an iOS simulator: the simulator's unified log, from `simctl spawn`.
+        # The simulator's unified log, from `simctl spawn` (tested on an iOS simulator).
         xcrun = self.lib.xcrun()
         return [xcrun, "simctl", "spawn", self.lib.device, "log", "stream", "--style", "compact"] if xcrun else None
 

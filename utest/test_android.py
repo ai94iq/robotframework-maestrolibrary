@@ -83,8 +83,7 @@ class LogcatTest(AndroidTest):
         self.lib.device_id()
         self.assertEqual(self.sp.Popen.call_args.args[0], LOGCAT)
 
-    def test_ios_simulator_streams_its_log_wip(self):
-        # WIP: the simctl command is from Apple's docs, not measured (no Mac).
+    def test_ios_simulator_streams_its_log(self):
         self.lib.platform, self.lib.device, self.lib._xcrun = "ios", "SIM-1", "/usr/bin/xcrun"
         self.lib.logcat.start_test(item("S.T", item("S")), None)
         self.lib.logcat.ensure()
@@ -97,15 +96,13 @@ class LogcatTest(AndroidTest):
         self.lib.logcat.ensure()
         self.sp.Popen.assert_not_called()
 
-    def test_an_ios_device_warns_once_that_support_is_wip(self):
+    def test_an_ios_device_is_used_without_a_warning(self):
         lib = MaestroLibrary(run_on_failure="Nothing", logcat=False)
         lib.mcp.call_tool = mock.Mock(return_value=[{"type": "text", "text":
             '{"devices": [{"device_id": "SIM-1", "platform": "ios", "connected": true}]}'}])
         with mock.patch("MaestroLibrary.logger.warn") as warn:
-            lib.device_id()
-            lib.device_id()
-        self.assertEqual(warn.call_count, 1)
-        self.assertIn("WIP", warn.call_args.args[0])
+            self.assertEqual(lib.device_id(), "SIM-1")
+        warn.assert_not_called()
 
 
 SCRCPY = ["scrcpy", "-s", "emulator-5554", "--no-audio", "--window-title=Maestro emulator-5554"]

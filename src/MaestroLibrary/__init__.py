@@ -20,10 +20,7 @@ SETTLE_TIMEOUT_MS = 3000
 APP_LAUNCH_TIMEOUT_S = 20  # Appium's default appWaitDuration
 ADB_TIMEOUT_S = 10
 ADB_MISSING = "adb did not run: install Android platform-tools and put adb on PATH."
-XCRUN_ANSWER = r"xcrun version \d"  # WIP: from memory, not measured (no Mac)
-IOS_WIP = ("iOS support in MaestroLibrary is WIP and untested: Android-only keywords fail, and the iOS "
-           "log stream, recording, Clear Keychain, Click Alert Button and Hide Keyboard key_name need "
-           "testing on an iOS simulator.")
+XCRUN_ANSWER = r"xcrun version \d"  # `xcrun --version`, measured: "xcrun version 72."
 ADB_ANSWER = r"Android Debug Bridge version \d"  # `adb version`, measured with platform-tools 37.0.1
 MCP_TIMEOUT_S = 300  # how long to wait for one Maestro command flow beyond its own timeouts
 FLOW_TIMEOUT_S = 3600  # a Run Flow file or directory can hold any number of commands
@@ -74,10 +71,11 @@ class MaestroLibrary(DynamicCore):
 
     = iOS =
 
-    WIP and untested: Maestro drives iOS simulators only (macOS with Xcode). Android-only keywords
-    (`Go Back`, `Set Airplane Mode`, `Execute Adb Shell`, ...) fail at once on iOS; the iOS log
-    stream, recording, `Clear Keychain`, `Click Alert Button` and `Hide Keyboard` ``key_name``
-    need testing on a simulator.
+    Maestro drives iOS simulators only (macOS with Xcode). Tested on an iOS simulator
+    (2026-10-11): element keys and locators, typing, `Kill Application`, the simulator's log
+    stream, screen recording, `Clear Keychain` and `Hide Keyboard` ``key_name``. Android-only
+    keywords (`Go Back`, `Set Airplane Mode`, `Execute Adb Shell`, ...) fail at once on iOS.
+    Not tested yet on iOS: `Click Alert Button` and `Hide Keyboard` without ``key_name``.
 
     = Anything else =
 
@@ -107,7 +105,7 @@ class MaestroLibrary(DynamicCore):
 
         `logcat` streams ``adb logcat`` to ``logcat/<n>-<test>.txt`` in the output directory, one
         file per test, linked in the log; skipped without adb. On an iOS simulator it streams the
-        simulator's log instead (WIP, needs testing; needs xcrun).
+        simulator's log instead (needs xcrun).
 
         `mirror` opens a scrcpy window showing the Android device when the device is first used,
         and closes it when the run ends. A failure to start it is a warning.
@@ -178,8 +176,6 @@ class MaestroLibrary(DynamicCore):
                                    "simulator, or connect a device.")
             self.device, self.platform = connected[0]["device_id"], connected[0]["platform"]
             logger.info(f"Using {self.platform} device '{self.device}'.")
-            if self.platform != "android":
-                logger.warn(IOS_WIP)
             if self.mirror_at_start and self.platform == "android":
                 try:
                     self.screen_mirror.start(self.device)
@@ -234,7 +230,7 @@ class MaestroLibrary(DynamicCore):
     def xcrun(self):
         """Returns xcrun's path once `xcrun --version` answers like xcrun, else None. Checked once.
 
-        WIP: used for the iOS simulator (simctl); the expected answer is not measured yet.
+        Used for the iOS simulator (simctl).
         """
         if self._xcrun is None:
             try:
