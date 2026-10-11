@@ -4,6 +4,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions: [Sem
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-10-11
+### Fixed
+- iOS `Stop Screen Recording`: when `xcrun simctl io recordVideo` exits without a video, the failure
+  message now ends with what simctl printed (`simctl said: ...`) instead of only its exit code. Found on
+  the first iOS simulator run, where the recorder exited with 16 and said nothing.
+
 ## [0.6.1] - 2026-10-11
 ### Fixed
 - Studio's device switcher now lists devices connected while it is open (an emulator started or a phone

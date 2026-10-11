@@ -14,7 +14,7 @@ from .android import Logcat, Mirror
 from .mcp import NO_WINDOW, MaestroError, MaestroMCP, verified_exe
 from .recorder import FlowRecorder
 
-__version__ = "0.6.1"
+__version__ = "0.6.2"
 NO_APP = "maestro.no.app"
 SETTLE_TIMEOUT_MS = 3000
 APP_LAUNCH_TIMEOUT_S = 20  # Appium's default appWaitDuration
