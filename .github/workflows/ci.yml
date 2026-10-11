@@ -106,7 +106,7 @@ jobs:
         shell: msys2 {0}
         run: |
           rm -f /usr/bin/link.exe   # MSYS2's coreutils link would shadow MSVC's linker
-          python packaging/build_ffmpeg.py ffmpeg
+          python packaging/build_ffmpeg.py "$GITHUB_WORKSPACE/ffmpeg"   # the MSYS2 login shell may start in its own home
       - if: runner.os != 'Windows' && steps.cache.outputs.cache-hit != 'true'
         run: python packaging/build_ffmpeg.py ffmpeg
       - run: python packaging/build_bundle.py ffmpeg bundles

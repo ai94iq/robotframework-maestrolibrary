@@ -57,6 +57,8 @@ def main(argv=None):
         subprocess.run([bash, "./configure", f"--prefix={prefix.replace(os.sep, '/')}", *options], cwd=source, check=True)
         subprocess.run([make, f"-j{args.jobs}"], cwd=source, check=True)
         subprocess.run([make, "install"], cwd=source, check=True)
+        if not os.path.isdir(os.path.join(prefix, "include", "libavcodec")):
+            raise SystemExit(f"make install did not fill {prefix}")
         notices = os.path.join(prefix, "share", "licenses", "ffmpeg")
         os.makedirs(notices, exist_ok=True)
         shutil.copy(os.path.join(source, "COPYING.LGPLv2.1"), notices)
