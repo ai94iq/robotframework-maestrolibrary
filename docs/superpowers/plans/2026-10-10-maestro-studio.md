@@ -1,7 +1,7 @@
 # MaestroLibrary Studio Implementation Plan (revision 2: native Qt)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-> Replace `robotframework-maestrolibrary/docs/superpowers/plans/2026-10-10-maestro-studio.md` with this file as the first execution step.
+> Status: done. Current status and measurements live in `plan.md`; this file keeps the design, security and platform notes.
 
 ## Context
 

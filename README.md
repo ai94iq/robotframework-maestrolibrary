@@ -5,6 +5,20 @@ If you know [AppiumLibrary](https://github.com/serhatbolsu/robotframework-appium
 you already know the keyword names, the arguments and the `strategy=value` locators.
 There's no Appium server and no capabilities to manage. Maestro waits for the UI on every action.
 
+## Contents
+
+- [Requirements](#requirements)
+- [Install](#install)
+- [Example](#example)
+- [Locators](#locators)
+- [Coming from AppiumLibrary](#coming-from-appiumlibrary)
+- [Android logs and mirroring](#android-logs-and-mirroring)
+- [iOS (WIP, needs testing)](#ios-wip-needs-testing)
+- [Converting between Maestro flows and Robot tests](#converting-between-maestro-flows-and-robot-tests)
+- [Studio: record a test on a live device](#studio-record-a-test-on-a-live-device)
+- [Maestro CLI coverage](#maestro-cli-coverage)
+- [Development](#development)
+
 ## Requirements
 - Python 3.12 or newer
 - Maestro CLI on PATH (`maestro --version`) and Java 17+
