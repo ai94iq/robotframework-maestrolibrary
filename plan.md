@@ -23,7 +23,7 @@ Current work: **MaestroLibrary Studio**. A native Qt (PySide6) window shows the 
 - [x] Task 8 Windows and macOS Intel: all four bundles green in CI at `6431908` (user, 2026-10-11). Windows fixes: bash from PATH (`ede0d9e`), --ffmpeg-dir with forward slashes because setuptools shlex-splits build options (`ea3b2e3`), import libraries copied from bin to lib (`6431908`). Local Windows build: MSYS2 in C:\msys64 plus VS Build Tools 2022, `.exe` 61 MB, self-check LGPL with no GPL parts
 - [x] Task 8: Windows `.exe` against the phone (2026-10-11): the first run opened a console window per adb or maestro call, and closing maestro's stopped the MCP server; fixed with CREATE_NO_WINDOW. Rebuilt: window after 4.3 s, live view and elements, no console windows, clean shutdown
 - [x] End to end 18 of 18 again after the review fixes and adb typing (2026-10-11, phone): typing after a tap records one `Input Text    text\=Search    maestro` line; the saved test replays with robot (PASS, 48 s)
-- [ ] Release 0.6.0 (only when the user says so)
+- [x] Release 0.6.0 (tag `v0.6.0`, 2026-10-11): PyPI and the four Studio bundles with SHA256SUMS on the GitHub release
 
 ## Measured (2026-10-10, Samsung A70, Android 15)
 

@@ -3,6 +3,8 @@
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.6.0] - 2026-10-11
 ### Added
 - Studio: `python -m MaestroLibrary.studio` (the `studio` extra: PySide6, PyAV) shows the device
   screen live (scrcpy's H.264 stream) and records a Robot test while you act on it: click, type,
