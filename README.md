@@ -13,7 +13,7 @@ There's no Appium server and no capabilities to manage. Maestro waits for the UI
 - [Locators](#locators)
 - [Coming from AppiumLibrary](#coming-from-appiumlibrary)
 - [Android logs and mirroring](#android-logs-and-mirroring)
-- [iOS (WIP, needs testing)](#ios-wip-needs-testing)
+- [iOS (WIP)](#ios-wip)
 - [Converting between Maestro flows and Robot tests](#converting-between-maestro-flows-and-robot-tests)
 - [Studio: record a test on a live device](#studio-record-a-test-on-a-live-device)
 - [Maestro CLI coverage](#maestro-cli-coverage)
@@ -105,81 +105,34 @@ Drag And Drop, Flick, sleep-between-wait-loop settings, and the iOS keywords Loc
 Tap With Number Of Taps.
 
 ## Android logs and mirroring
-Logcat: on Android, every test's `adb logcat` is streamed to `logcat/<n>-<test>.txt` in the
-output directory and linked in the log, so a crash's log survives the device's small ring
-buffers. Suite setup and teardown get a file named after the suite. Needs adb; turn it off with
-`logcat=False`.
+On Android, every test's `adb logcat` is streamed to `logcat/<n>-<test>.txt` in the output
+directory and linked in the log, so a crash's log survives the device's small ring buffers
+(`logcat=False` turns it off). `Start Screen Mirroring` / `Stop Screen Mirroring`, or `mirror=True`
+for the whole run, show the device in a scrcpy window. Import arguments, a full suite and the run
+commands: [docs/logs-and-mirroring.md](https://github.com/ai94iq/robotframework-maestrolibrary/blob/main/docs/logs-and-mirroring.md).
 
-Mirroring: `Start Screen Mirroring` shows the device screen in a scrcpy window on this computer,
-and `Stop Screen Mirroring` closes it (a no-op when nothing runs, so it fits a teardown).
-`mirror=True` opens it for the whole run instead. The window is view only; `control=True` lets
-the mouse and keyboard through. Extra arguments go to scrcpy as given, for example
-`--max-size=1024` or `--record=run.mp4` for a recording longer than `Start Screen Recording`'s
-3 minutes.
+## iOS (WIP)
+Maestro 2.11.0 drives iOS **simulators only** (macOS with Xcode); it fails physical iPhones with
+"Physical iOS devices are not yet supported". Using an iOS device logs one warning that iOS
+support is WIP.
 
-Import arguments, set once in a shared resource file:
+Measured on an iPhone simulator (two runs on 2026-10-11):
+- element keys match Android: Flutter text in `a11y`, Semantics ids in `rid`; text and `id=`
+  locators work;
+- the per-test log files stream the simulator's log (`xcrun simctl spawn <udid> log stream`),
+  the app's lines included;
+- `Start/Stop Screen Recording` (`xcrun simctl io <udid> recordVideo`) saves an MP4;
+- `Kill Application`, `Clear Keychain` and `Hide Keyboard    key_name=Done` work;
+- `xcrun` is checked like adb (`xcrun --version` must answer `xcrun version <n>`) and accepted.
 
-```robotframework
-*** Settings ***
-Documentation     common.resource: the library and its settings, for every suite.
-Library           MaestroLibrary    timeout=10s    device=${DEVICE}    logcat=${LOGCAT}    mirror=${MIRROR}
-
-*** Variables ***
-${DEVICE}         ${None}     # the first connected device
-${LOGCAT}         ${True}     # logcat/<n>-<test>.txt per test
-${MIRROR}         ${False}    # a scrcpy window for the whole run
-```
-
-A suite that uses it, with mirroring and a recording for one test:
-
-```robotframework
-*** Settings ***
-Resource          common.resource
-Suite Setup       Open Application    com.example.app
-Suite Teardown    Close All Applications
-
-*** Test Cases ***
-Login Works
-    Input Text    id=username    demo
-    Input Password    id=password    ${PASSWORD}
-    Click Element    text=Log in
-    Wait Until Page Contains    Welcome
-
-Checkout While Watching
-    [Setup]    Start Screen Mirroring    --max-size=1024    --always-on-top
-    Start Screen Recording    time_limit=60s
-    Click Element    text=Checkout
-    Wait Until Page Contains    Order placed
-    [Teardown]    Run Keywords    Stop Screen Recording    checkout.mp4
-    ...           AND    Stop Screen Mirroring
-```
-
-```
-robot -d results tests/                                      # logcat on, no window
-robot -d results --variable MIRROR:True tests/               # watch the whole run
-robot -d results --variable DEVICE:emulator-5554 --variable LOGCAT:False tests/
-```
-After a crash, open the test in `log.html` and follow its `logcat` link, or read
-`results/logcat/<n>-<suite>.<test>.txt`.
-
-## iOS (WIP, needs testing)
-Nothing here has run on iOS yet: there was no Mac to test on. Maestro 2.11.0 drives iOS
-**simulators only** (macOS with Xcode); it fails physical iPhones with "Physical iOS devices are
-not yet supported". Using an iOS device logs one warning that iOS support is WIP.
+`Start Screen Mirroring` does nothing on iOS (the Simulator window shows the screen).
 
 Android only, failing at once on iOS (from Maestro's docs): `Go Back` (iOS has no back button),
 `Press Key` Back / Power / Tab and `Press Keycode 4`, `Set Airplane Mode` (simulators have none),
 `Execute Adb Shell`, `Is Keyboard Shown`.
 
-WIP, written from Maestro's and Apple's docs, needs testing on a simulator:
-- the per-test log files stream the simulator's log (`xcrun simctl spawn <udid> log stream`);
-- `Start/Stop Screen Recording` uses `xcrun simctl io <udid> recordVideo`;
-- `Start Screen Mirroring` does nothing (the Simulator window shows the screen);
-- `Clear Keychain`, `Click Alert Button`, `Hide Keyboard    key_name=Done`;
-- `xcrun` is checked like adb (`xcrun --version` must answer `xcrun version <n>`).
-
-Not checked on iOS yet: Kill Application, permission names for `Set Application Permissions`,
-which attributes `Get Element Attribute` sees, and how `id=` matches.
+Not checked on iOS yet: `Click Alert Button` (no alert appeared), permission names for
+`Set Application Permissions`, and which attributes `Get Element Attribute` sees.
 
 ## Converting between Maestro flows and Robot tests
 Record a flow in Maestro Studio, save its YAML, and convert it to a Robot test:
@@ -187,61 +140,9 @@ Record a flow in Maestro Studio, save its YAML, and convert it to a Robot test:
 pip install "robotframework-maestrolibrary[convert]"
 python -m MaestroLibrary.flow2robot settings_search.yaml > settings_search.robot
 ```
-A Studio flow such as
-```yaml
-appId: com.android.settings
----
-- launchApp
-- assertVisible: "Search Settings"
-- tapOn:
-    text: "Apps"
-    index: 0
-- back
-- tapOn:
-    id: "com.android.settings:id/search_action_bar"
-- inputText: "wifi"
-- takeScreenshot: search
-- hideKeyboard
-- back
-- stopApp
-```
-becomes
-```robotframework
-*** Settings ***
-Library    MaestroLibrary
-
-*** Test Cases ***
-Settings Search
-    Open Application    com.android.settings
-    Wait Until Page Contains Element    text\=Search Settings
-    Run Flow    - {tapOn: {text: Apps, index: 0}}
-    Go Back
-    Input Text    id_regex\=com.android.settings:id/search_action_bar    wifi
-    Capture Page Screenshot    search.jpg
-    Hide Keyboard
-    Go Back
-    Terminate Application    com.android.settings
-```
-(`\=` keeps Robot from reading `id=...` as a named argument.)
-
-Commands with a keyword become that keyword (`tapOn` then `inputText` becomes one `Input Text`);
-the rest, such as a selector with `index`, become an inline `Run Flow` line. Maestro matches text
-as a regular expression, so a value with regex characters (an id with dots, too) comes out as
-`regex=` or `id_regex=`, which keeps its meaning. Move the locators
-into variables before the test joins a suite.
-
-### Robot tests to Maestro flows
-A Robot test is only a flow once it runs: variables, loops and user keywords resolve at run time.
-So the library records instead of converting. With `record_flows=True`, every Maestro command a
-test sends goes to `flows/<n>-<test>.yaml` in the output directory, linked in the log:
-```
-robot -v RECORD:True -d results tests/      # Library  MaestroLibrary  record_flows=${RECORD}
-maestro test -e PASSWORD=... results/flows/1-Log_In.yaml
-```
-Loops come out unrolled and `Run Flow` lines are kept; `Input Password` is recorded as
-`${PASSWORD}`. Snapshot checks (`Page Should Contain Element`, `Get Text`, ...), screenshots, adb
-and Python steps are not Maestro commands, so they are not in the flow; waiting checks such as
-`Wait Until Page Contains Element` are (`extendedWaitUntil`).
+The other way, `record_flows=True` writes every Maestro command a test sends to
+`flows/<n>-<test>.yaml`. A worked example and what converts to what:
+[docs/flows.md](https://github.com/ai94iq/robotframework-maestrolibrary/blob/main/docs/flows.md).
 
 ## Studio: record a test on a live device
 ```
@@ -252,72 +153,14 @@ Or, without Python, download the Windows `.exe`, Linux `.tar.gz` or macOS `.dmg`
 [GitHub release](https://github.com/ai94iq/robotframework-maestrolibrary/releases) (unsigned for now; the release text
 says how to open them). Maestro, adb and scrcpy are still needed on the machine.
 
-A window shows the device screen live, and every action you take on it runs on the device while
-the matching Robot line is recorded:
-
-| On the screen | Recorded |
-|---|---|
-| click | `Click Element` with the first unique locator (`id=`, then `text=`), or `point=` and a GAP comment |
-| type, then Enter | merged into the click before it: `Input Text` (`Input Password` with `${PASSWORD}` when Secret is on) |
-| drag | `Swipe By Percent` |
-| right-click | `Long Press`, `Wait Until Page Contains Element`, `Element Should Be Visible`, `Element Text Should Be` |
-| control bar under the screen | `Open Application`, `Go Back`, `Hide Keyboard`, `Capture Page Screenshot` |
-
-Inspect mode selects instead of acting: the element's suggested locators (with how many elements
-each matches), its attributes and the source tree. Undo, Clear, Copy and Save work on the recorded
-lines; Record pauses recording while actions still run. Move the locators into variables and file
-the GAP lines as test id requests before the test joins a suite.
-
-- The live view needs scrcpy on PATH and an Android device; it streams the device's hardware H.264
-  encoder at up to 1080 px (`--max-size`; `--video-encoder` picks another encoder from
-  `scrcpy --list-encoders`). Without it, or on an iOS simulator, the view refreshes with a
-  screenshot after each step.
-- On Android with adb, taps, long presses, swipes, Back and plain typing (letters, digits, spaces
-  and `. , _ @ : + = / -`) go to the device with `adb shell input` and are recorded at once. Other
-  text and secrets go through Maestro, as do assertions and Launch, which waits for the screen to
-  settle. The recorded line is the same either way, and the locator is checked when the test runs.
-  Measured on an Android 15 phone: the line is recorded 0.13 to 0.17 s after a click and the screen
-  changes 0.33 to 0.43 s after it (a Maestro tap took 4 to 7 s); typing takes about 0.3 s against
-  4 s through Maestro.
-- On Android, the element tree is read from Maestro's on-device driver (its gRPC `viewHierarchy`,
-  through an adb forward): 0.45 s on an Android 15 phone against 2.2 s for MCP's `inspect_screen`,
-  which stays the fallback.
-- With several devices connected, the device box in the toolbar lists them (phones and emulators
-  marked apart); picking one moves Studio to it in place and keeps the recorded lines.
-- The theme button in the toolbar cycles System, Light and Dark; the choice is remembered between
-  runs.
-- Shortcuts: `Ctrl+1` Act, `Ctrl+2` Inspect, `Ctrl+Z` undo, `Ctrl+S` save, `Delete` removes the
-  selected recorded line.
-- Keep Robot runs off the device while Studio is open: Maestro allows one session per device.
-- Linux needs Qt's system libraries (Debian/Ubuntu: `libxcb-cursor0`); Windows and macOS need
-  nothing extra.
-- Device text is shown as plain text, and recorded arguments escape Robot variable syntax, so an
-  app cannot inject code into the saved test.
+A window shows the device screen live; every action you take on it runs on the device while the
+matching Robot line is recorded. What each action records, Inspect mode, shortcuts and platform
+notes: [docs/studio.md](https://github.com/ai94iq/robotframework-maestrolibrary/blob/main/docs/studio.md).
 
 ## Maestro CLI coverage
-The library talks to `maestro mcp`. What the other `maestro` subcommands do, and where it lives here:
-
-| `maestro` | Here |
-|---|---|
-| `test` (flows, tags, `-e`) | `Run Flow` |
-| `print-hierarchy`, `query` | `Get Source`, `Get Text`, `Get Element Attribute`, the Should keywords |
-| `list-devices` | the `device` import argument; the first connected device by default |
-| `record` | `Start/Stop Screen Recording` |
-| `check-syntax` | `Run Flow` fails with Maestro's parse error and its line |
-| `start-device` | not a test step: boot the emulator before the run, e.g. `maestro start-device --platform android` in CI |
-| `studio`, `chat`, `driver`, `cloud`, `login`, ... | interactive or Maestro Cloud tools, not used |
-
-Flow commands without a keyword, still reachable with `Run Flow`: the AI assertions (need a
-Maestro Cloud key), `inputRandom*`, clipboard commands (the copied text stays inside one flow),
-`repeat`/`retry` (use Robot's FOR and `Wait Until Keyword Succeeds`), `runScript`/`evalScript`,
-`toggleAirplaneMode`, `assertDarkMode`/`assertLightMode`, `clearKeychain` (iOS), `doubleTapOn`.
-
-Each `maestro mcp` process reinstalls Maestro's driver app on the device once, when it first
-connects (Maestro hard-codes it). The library keeps one process for the whole run.
-
-Tip: to let a coding agent look at the app while you write tests, register the same server with
-it, e.g. `claude mcp add maestro -- maestro mcp` for Claude Code. It opens its own session on
-the device, so keep it idle while a Robot run is going.
+The library talks to `maestro mcp`. Which other `maestro` subcommands map to which keywords, the
+flow commands reachable only through `Run Flow`, and how to share the server with a coding agent:
+[docs/maestro-cli.md](https://github.com/ai94iq/robotframework-maestrolibrary/blob/main/docs/maestro-cli.md).
 
 ## Development
 ```
