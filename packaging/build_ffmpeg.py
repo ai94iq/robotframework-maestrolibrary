@@ -46,6 +46,8 @@ def main(argv=None):
     parser.add_argument("prefix")
     parser.add_argument("--jobs", type=int, default=os.cpu_count() or 2)
     args = parser.parse_args(argv)
+    if sys.platform in ("msys", "cygwin"):
+        raise SystemExit(f"Run this with a Windows Python, not {sys.executable}: PyAV's MSVC build needs --toolchain=msvc.")
     prefix = os.path.abspath(args.prefix)
     options = CONFIGURE + (["--toolchain=msvc"] if sys.platform == "win32" else [])
     # Full paths from PATH: Windows looks in System32 before PATH, where bash.exe is the WSL launcher.
