@@ -4,6 +4,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions: [Sem
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-10-11
+### Fixed
+- Studio's device switcher now lists devices connected while it is open (an emulator started or a phone
+  plugged in later): each idle poll checks `adb devices` and reads Maestro's device list again only when it
+  changes.
+- Studio's device pill keeps the device name next to its status dot when the state changes from
+  connecting to live.
+
 ## [0.6.0] - 2026-10-11
 ### Added
 - Studio: `python -m MaestroLibrary.studio` (the `studio` extra: PySide6, PyAV) shows the device

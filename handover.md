@@ -2,7 +2,7 @@
 
 ## State (2026-10-10)
 
-- `main` is at the 0.6.0 release (tag `v0.6.0`, 2026-10-11): Studio, its desktop bundles on the GitHub release. Python floor 3.12.
+- `main` is at the 0.6.1 release (tag `v0.6.1`, 2026-10-11; 0.6.0 brought Studio and its desktop bundles on the GitHub release). Python floor 3.12.
 - Run: `python -m MaestroLibrary.studio [--device ID] [--app APP_ID] [--max-size PX] [--video-encoder NAME]`; `pip install -e ".[studio]"` installs PySide6 6.12.0, av 19.0.1 and grpcio 1.84.0. `--self-check [FILE]` checks a build without a device.
 - Code: `locators.py` (hit testing, locator choice), `studio.py` (`Session`, `main`, `self_check`), `stream.py` (`ScrcpyStream`), `driver.py` (`DriverReader`), `studio_qt.py` (window and workers), `studio_icons.py` (Lucide 1.55.0); `packaging/` builds the desktop bundles.
 - Threads: the UI; `ActionWorker` runs Maestro steps and screen reads in order (at most one read queued); a second `ActionWorker` sends Android touch steps (tap, long press, swipe, Back) and plain typing with adb (a failed adb call records nothing) and does line edits; steps change worker only when the other is idle; `StreamReader` decodes the scrcpy stream, keeping the newest frame. The MCP client takes one call at a time.
