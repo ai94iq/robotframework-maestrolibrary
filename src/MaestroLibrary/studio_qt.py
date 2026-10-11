@@ -113,6 +113,7 @@ class ActionWorker(QObject):
     retarget = Signal(str)             # switch to this device, after the steps already queued
     switched = Signal(str, str)        # (device, platform) now in use
     done = Signal()                    # a step finished, whatever its outcome
+    devices = Signal(list)             # the device list changed (see watch_devices)
 
     def __init__(self, session, follow=None):
         super().__init__()
@@ -125,6 +126,12 @@ class ActionWorker(QObject):
         self.snap.connect(self.grab)
         self.edit.connect(self.apply_edit)
         self.retarget.connect(self.switch)
+        self._serials = self._serials_now = self._list = None
+
+    def watch_devices(self, serials, listing):
+        """On each idle poll, compare serials() (cheap) with the last answer and emit listing() (slow) on a change."""
+        self._serials_now, self._list = serials, listing
+        self._serials = serials()
 
     def request_poll(self):
         """Queues one screen read, unless one is already waiting: a read takes seconds on a phone, and reads
@@ -137,6 +144,11 @@ class ActionWorker(QObject):
     def _polled(self):
         self._poll_queued = False
         self.refresh()
+        if self._list:
+            now = self._serials_now()
+            if now is not None and now != self._serials:
+                self._serials = now
+                self.devices.emit(self._list())
 
     @Slot(str)
     def switch(self, device):
@@ -1452,6 +1464,7 @@ class MainWindow(QMainWindow):
         worker.ended.connect(self._ended)
         worker.image.connect(self.device.set_frame)
         worker.switched.connect(self._switched)
+        worker.devices.connect(self.set_devices)
         if touch:
             touch.recorded.connect(self._recorded)
             touch.failed.connect(self.error)
@@ -1476,7 +1489,7 @@ class MainWindow(QMainWindow):
         gap = lambda: bar.addWidget(self._gap())
         bar.addWidget(plain_label("MaestroLibrary Studio", "product"))
         gap()
-        pill = Pill(); pill.setObjectName("pill")
+        self.pill = pill = Pill(); pill.setObjectName("pill")
         row = QHBoxLayout(pill); row.setContentsMargins(10, 4, 12, 4); row.setSpacing(6)
         self.device_icon = plain_label("", "device_icon")
         self.dot = plain_label("", "dot")
@@ -1484,15 +1497,8 @@ class MainWindow(QMainWindow):
         self.chevron = plain_label("", "chevron")
         for widget in (self.device_icon, self.dot, self.state, self.chevron):
             row.addWidget(widget)
-        self.chevron.setVisible(len(self.devices) > 1)
-        if len(self.devices) > 1:                    # one device: a plain label; several: a dropdown of them
-            pill.setProperty("menu", True)
-            pill.setCursor(Qt.CursorShape.PointingHandCursor)
-            pill.setToolTip("Switch device")
-            pill.clicked.connect(lambda: self._device_menu(pill))
-            sizing = self._devices_menu()
-            pill.setMinimumWidth(sizing.sizeHint().width())     # pill and menu share one width
-            sizing.deleteLater()
+        pill.clicked.connect(lambda: self._device_menu(pill))
+        self._pill_menu()
         bar.addWidget(pill)
         gap()
         self._dot("ink3")
@@ -1667,6 +1673,24 @@ class MainWindow(QMainWindow):
         current = next((d for d in self.devices if d["device_id"] == self.device_name), {})
         self.device_icon.setPixmap(icon(device_icon(current), self.t["ink"]).pixmap(ICON_SIZE, ratio))
         self.chevron.setPixmap(icon("chevron-down", self.t["ink2"]).pixmap(ICON_SIZE, ratio))
+
+    def _pill_menu(self):
+        several = len(self.devices) > 1          # one device: a plain label; several: a dropdown of them
+        self.chevron.setVisible(several)
+        self.pill.setProperty("menu", several)
+        self.pill.setCursor(Qt.CursorShape.PointingHandCursor if several else Qt.CursorShape.ArrowCursor)
+        self.pill.setToolTip("Switch device" if several else "")
+        if several:
+            sizing = self._devices_menu()
+            self.pill.setMinimumWidth(sizing.sizeHint().width())     # pill and menu share one width
+            sizing.deleteLater()
+        self.pill.style().unpolish(self.pill); self.pill.style().polish(self.pill)    # the hover rule reads "menu"
+
+    def set_devices(self, devices):
+        """A device was plugged in or removed (ActionWorker.watch_devices): the switcher lists what is there now."""
+        if devices and devices != self.devices:
+            self.devices = devices
+            self._pill_menu()
 
     def _device_menu(self, pill):
         menu = self._devices_menu()

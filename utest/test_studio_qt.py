@@ -165,6 +165,24 @@ class ActionWorkerTest(unittest.TestCase):
             thread.wait(2000)
         self.assertEqual([r[0] for r in self.lib.ran], ["go_back", "hide_keyboard", "go_back"])
 
+    def test_the_device_list_is_read_again_only_when_adb_sees_a_change(self):
+        serials, listed, lists = [frozenset({"SER"})], [], []
+        self.worker.devices.connect(lists.append)
+
+        def listing():
+            listed.append(1)
+            return [{"device_id": s} for s in sorted(serials[0])]
+        self.worker.watch_devices(lambda: serials[0], listing)
+        self.worker._polled()
+        self.assertEqual(listed, [])                      # same serials: no 3 s Maestro call
+        serials[0] = frozenset({"SER", "emulator-5554"})
+        self.worker._polled()
+        self.worker._polled()
+        self.assertEqual(lists, [[{"device_id": "SER"}, {"device_id": "emulator-5554"}]])
+        serials[0] = None                                 # adb did not answer: keep what is listed
+        self.worker._polled()
+        self.assertEqual(len(lists), 1)
+
 
 HOSTILE = "<b>x</b><img src=x>"
 
@@ -458,6 +476,16 @@ class ThemeTest(WindowCase):
         self.assertIn("A&B", window.windowTitle())
         from MaestroLibrary.studio_qt import device_icon
         self.assertEqual([device_icon(d) for d in window.devices], ["device", "monitor-smartphone"])
+
+    def test_a_device_plugged_in_later_makes_the_pill_a_dropdown(self):
+        self.assertFalse(self.window.pill.property("menu"))
+        self.window.set_devices([{"device_id": "SER", "type": "real"}, {"device_id": "emulator-5554", "type": "emulator"}])
+        self.assertTrue(self.window.pill.property("menu"))
+        self.assertTrue(self.window.chevron.isVisibleTo(self.window))
+        self.window.switch_device("emulator-5554")
+        self.assertEqual(self.lib.device_switches, ["emulator-5554"])
+        self.window.set_devices([])                       # Maestro's list could not be read: keep the old one
+        self.assertEqual(len(self.window.devices), 2)
 
     def test_toolbar_keeps_its_height_across_themes(self):
         self.app.processEvents()

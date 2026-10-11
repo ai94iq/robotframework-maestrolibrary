@@ -327,6 +327,17 @@ class StreamTest(unittest.TestCase):
                     stream.server_file()
 
 
+class AdbSerialsTest(unittest.TestCase):
+    def test_ready_devices_only(self):
+        from MaestroLibrary import studio
+        out = "List of devices attached\nR58M90J3LRN\tdevice\nemulator-5554\toffline\n10.0.0.2:5555\tdevice\n\n"
+        lib = mock.Mock(adb=lambda: "adb")
+        with mock.patch.object(studio.subprocess, "run", return_value=mock.Mock(stdout=out)):
+            self.assertEqual(studio.adb_serials(lib), frozenset({"R58M90J3LRN", "10.0.0.2:5555"}))
+        with mock.patch.object(studio.subprocess, "run", side_effect=OSError("gone")):
+            self.assertIsNone(studio.adb_serials(lib))
+
+
 class EscapeTest(unittest.TestCase):
     def test_flow2robot_keeps_only_plain_variables(self):
         from MaestroLibrary.flow2robot import escape

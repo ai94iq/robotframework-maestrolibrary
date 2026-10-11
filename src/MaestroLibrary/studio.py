@@ -9,11 +9,13 @@ import argparse
 import base64
 import json
 import re
+import subprocess
 import sys
 import threading
 
 from .flow2robot import SEP, escape
 from .locators import best_locator, element_at, parse_bounds, walk
+from .mcp import NO_WINDOW
 from .recorder import MASKED_INPUT
 
 GAP = "    # GAP: no unique locator, ask for a test id"
@@ -294,6 +296,8 @@ def main(argv=None):
         window = studio_qt.MainWindow(session, worker, device_name=device, platform=lib.platform,
                                       devices=connected_devices(lib), live_view=live_view, touch=touch)
         worker.screenshot = screenshot
+        if lib.adb():                       # devices plugged in later join the device switcher
+            worker.watch_devices(lambda: adb_serials(lib), lambda: connected_devices(lib))
         window.resize(1480, 940)
         window.show()
         window.start_live()
@@ -340,6 +344,16 @@ def self_check(studio_qt, out="-"):
         with open(out, "w", encoding="utf-8") as f:
             f.write("\n".join(report) + "\n")
     return 0 if frames else 1
+
+
+def adb_serials(lib):
+    """The serials adb reports ready, or None when adb does not answer. About 60 ms against 3.3 s for Maestro's
+    list_devices (measured on Windows), so Studio checks this on each idle poll and lists only on a change."""
+    try:
+        out = subprocess.run([lib.adb(), "devices"], capture_output=True, text=True, timeout=10, **NO_WINDOW).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return frozenset(line.split("\t")[0] for line in out.splitlines()[1:] if line.endswith("\tdevice"))
 
 
 def connected_devices(lib):
