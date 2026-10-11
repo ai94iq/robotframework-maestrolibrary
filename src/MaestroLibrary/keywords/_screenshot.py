@@ -4,6 +4,7 @@ import os
 import pathlib
 import signal
 import subprocess
+import tempfile
 import threading
 from datetime import timedelta
 
@@ -49,7 +50,7 @@ class ScreenshotKeywords:
         self._index = itertools.count(1)
         self._recording = None
         self._remote = None
-        self._ios_video = self._timer = None
+        self._ios_video = self._ios_log = self._timer = None
 
     @keyword
     def capture_page_screenshot(self, filename: str | None = None) -> str | None:
@@ -212,16 +213,17 @@ class ScreenshotKeywords:
         if self._recording and self._recording.poll() is None:
             raise AssertionError("A screen recording is already running. Stop it with Stop Screen Recording.")
         self._ios_video = output_path(f"maestro-recording-{os.getpid()}-{next(self._index)}.mp4")
+        self._ios_log = tempfile.TemporaryFile()  # simctl's own words, for the failure message
         self._recording = subprocess.Popen([xcrun, "simctl", "io", self.lib.device, "recordVideo", "--force",
-                                            self._ios_video], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                                            self._ios_video], stdout=subprocess.DEVNULL, stderr=self._ios_log)
         # simctl records until interrupted; the timer stands in for screenrecord's --time-limit.
         self._timer = threading.Timer(time_limit.total_seconds(), self._interrupt, args=(self._recording,))
         self._timer.daemon = True
         self._timer.start()
 
     def _stop_ios_recording(self, filename):
-        recording, video, timer = self._recording, self._ios_video, self._timer
-        self._recording = self._ios_video = self._timer = None
+        recording, video, timer, log = self._recording, self._ios_video, self._timer, self._ios_log
+        self._recording = self._ios_video = self._ios_log = self._timer = None
         timer.cancel()
         if recording.poll() is None:
             self._interrupt(recording)  # simctl finishes the file on SIGINT
@@ -230,8 +232,12 @@ class ScreenshotKeywords:
             except subprocess.TimeoutExpired:
                 recording.kill()
                 raise AssertionError(f"The iOS recorder did not stop within {ADB_TIMEOUT_S} s; it was killed.") from None
+        with log:
+            log.seek(0)
+            said = log.read().decode(errors="replace").strip()
         if not os.path.isfile(video) or not os.path.getsize(video):
-            raise AssertionError(f"The iOS recorder exited ({recording.returncode}) and left no video at {video}.")
+            raise AssertionError(f"The iOS recorder exited ({recording.returncode}) and left no video at {video}."
+                                 + (f" simctl said: {said}" if said else ""))
         path = output_path(filename or f"maestro-recording-{next(self._index)}.mp4")
         os.replace(video, path)
         log_link(path, "Screen recording")

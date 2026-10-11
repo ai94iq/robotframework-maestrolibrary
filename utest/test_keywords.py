@@ -459,7 +459,8 @@ class ScreenshotKeywordsTest(KeywordTest):
         self.sp.Popen.return_value.poll.return_value = 1
         self.sp.Popen.return_value.returncode = 1
         self.run_kw("start_screen_recording")
-        with self.assertRaisesRegex(AssertionError, r"recorder exited \(1\).*no video"):
+        self.sp.Popen.call_args.kwargs["stderr"].write(b"Error: SimulatorKit could not be loaded")
+        with self.assertRaisesRegex(AssertionError, r"recorder exited \(1\).*no video.*simctl said: Error: Simu"):
             self.run_kw("stop_screen_recording")
 
 
