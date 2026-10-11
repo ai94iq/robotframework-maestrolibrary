@@ -8,6 +8,7 @@ the same thing. On Windows, run it from an MSYS2 shell inside the MSVC environme
 import .lib files PyAV's MSVC build links against). PyAV is then built against PREFIX.
 """
 import argparse
+import glob
 import hashlib
 import os
 import shutil
@@ -61,6 +62,8 @@ def main(argv=None):
         subprocess.run([make, "install"], cwd=source, check=True)
         if not os.path.isdir(os.path.join(prefix, "include", "libavcodec")):
             raise SystemExit(f"make install did not fill {prefix}")
+        for lib in glob.glob(os.path.join(prefix, "bin", "*.lib")):   # MSVC: import libraries land in bin
+            shutil.copy(lib, os.path.join(prefix, "lib"))             # PyAV's --ffmpeg-dir links from lib
         notices = os.path.join(prefix, "share", "licenses", "ffmpeg")
         os.makedirs(notices, exist_ok=True)
         shutil.copy(os.path.join(source, "COPYING.LGPLv2.1"), notices)
