@@ -1,6 +1,6 @@
 # Plan
 
-Current work: **MaestroLibrary Studio**. A native Qt (PySide6) window shows the live device screen; acting on it runs MaestroLibrary keywords and records the Robot lines. Design, security and platform notes (finished plan): `docs/superpowers/plans/2026-10-10-maestro-studio.md`; status and measurements are below.
+Current work: **MaestroLibrary Studio**. A native Qt (PySide6) window shows the live device screen; acting on it runs MaestroLibrary keywords and records the Robot lines. Status and measurements are below.
 
 ## Status
 
