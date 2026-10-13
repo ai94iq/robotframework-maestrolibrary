@@ -39,7 +39,7 @@ pip install robotframework-maestrolibrary
 For development: `pip install -e .`
 
 Bugs and ideas: [issues](https://github.com/ai94iq/robotframework-maestrolibrary/issues). Releases: a `vX.Y.Z` tag matching `__version__` publishes
-to PyPI from GitHub Actions (docs/distribution.md). MIT: see LICENSE.
+to PyPI from GitHub Actions ([docs/distribution.md](docs/distribution.md)). MIT: see LICENSE.
 
 ## Example
 ```robotframework
