@@ -3,6 +3,18 @@
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 > Status: done. Current status and measurements live in `plan.md`; this file keeps the design, security and platform notes.
 
+## Contents
+
+- [Context](#context)
+- [Measured on the phone](#measured-on-the-phone-samsung-a70-android-15-1080x2400-2026-10-10)
+- [Global Constraints](#global-constraints)
+- [Security](#security-rce-and-exploit-review-updated-for-a-native-app)
+- [Platforms](#platforms-windows-linux-macos)
+- [File Structure](#file-structure-the-end-state)
+- [Tasks](#task-3b-raise-the-python-floor-to-312-and-start-progress-tracking) to [Task 7](#task-7-docs-skill-ci-security-pass)
+- [Verification](#verification-end-to-end)
+- [Execution](#execution)
+
 ## Context
 
 The goal is a Maestro Studio / Appium Inspector-style recorder that writes MaestroLibrary Robot lines while you act on a live device screen. Revision 1 built it as a local web page:
