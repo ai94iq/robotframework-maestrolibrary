@@ -5,6 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions: [Sem
 ## Contents
 
 - [Unreleased](#unreleased)
+- [0.7.0](#070---2026-10-14)
 - [0.6.3](#063---2026-10-11) to [0.6.0](#060---2026-10-11)
 - [0.5.0](#050---2026-10-10)
 - [0.4.2](#042---2026-10-09) to [0.3.0](#030---2026-10-09)
@@ -12,6 +13,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions: [Sem
 - [0.1.2](#012---2026-10-07) to [0.1.0](#010---2026-10-07)
 
 ## [Unreleased]
+
+## [0.7.0] - 2026-10-14
 ### Added
 - `Scroll Down` and `Scroll Up` take `x`: swipe along that column (percent of the width) instead
   of the middle, so a signature pad, map or canvas does not take the swipe as a drawing; the scroll
