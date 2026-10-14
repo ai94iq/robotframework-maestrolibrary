@@ -19,6 +19,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions: [Sem
 ### Changed
 - `Get Text` on an element with no text of its own (a Flutter `Semantics(identifier:)` wrapper)
   returns the first text inside it instead of an empty string.
+- A Maestro "Illegal character" failure says to restart the emulator.
 
 ## [0.6.3] - 2026-10-11
 ### Changed
