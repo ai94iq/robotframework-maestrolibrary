@@ -6,7 +6,7 @@ from typing import Literal
 from robot.api import logger
 from robotlibcore import keyword
 
-from ..locators import to_selector
+from ..locators import to_selector, walk
 
 # inspect_screen abbreviates attribute names and omits attributes equal to these defaults.
 ABBREVIATIONS = {"bounds": "b", "text": "txt", "resource-id": "rid", "content-desc": "a11y",
@@ -169,12 +169,14 @@ class ElementKeywords:
     def get_text(self, locator: str, first_only: bool = True) -> str | list[str]:
         """Returns the text of the element matching `locator` (its content-desc if it has no text).
 
-        With `first_only=False`, returns a list with the text of every matching element.
+        An element with neither, such as a Flutter ``Semantics(identifier:)`` wrapper, returns the
+        first text found inside it. With `first_only=False`, returns a list with the text of every
+        matching element.
         """
         found = self.lib.find(to_selector(locator))
         if not found:
             raise AssertionError(f"Element '{locator}' did not match any elements.")
-        texts = [e.get("txt") or e.get("a11y", "") for e in found]
+        texts = [next((t for n in walk([e]) if (t := n.get("txt") or n.get("a11y"))), "") for e in found]
         return texts[0] if first_only else texts
 
     @keyword

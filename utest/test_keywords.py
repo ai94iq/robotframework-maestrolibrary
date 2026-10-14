@@ -113,6 +113,24 @@ class ActionKeywordsTest(KeywordTest):
             {"pressKey": "Enter"},
         ])
 
+    def test_get_text_falls_back_to_the_text_inside_a_wrapper(self):
+        wrappers = [{"rid": "row", "c": [{"c": [{"a11y": "first"}]}]}, {"rid": "row", "a11y": "second"},
+                    {"rid": "row"}]
+        with mock.patch.object(self.lib, "screen", return_value=wrappers):
+            self.assertEqual(self.run_kw("get_text", "id=row", first_only=False), ["first", "second", ""])
+
+    def test_scroll_with_x_swipes_that_column_until_found(self):
+        screens = [[{"txt": "Top"}], [{"txt": "About"}]]
+        with mock.patch.object(self.lib, "screen", side_effect=screens):
+            self.run_kw("scroll_down", "About", x=2)
+        self.assertEqual(self.steps(), [{"swipe": {"start": "2%, 75%", "end": "2%, 40%", "duration": 400}}])
+
+    def test_scroll_with_x_stops_when_the_screen_stops_changing(self):
+        with mock.patch.object(self.lib, "screen", return_value=[{"txt": "Bottom"}]):
+            with self.assertRaisesRegex(AssertionError, "'About' was not found after scrolling up"):
+                self.run_kw("scroll_up", "About", x=2)
+        self.assertEqual(self.steps(), [{"swipe": {"start": "2%, 40%", "end": "2%, 75%", "duration": 400}}])
+
     def test_hide_keyboard_presses_only_when_a_keyboard_is_shown(self):
         self.run_kw("hide_keyboard")
         self.lib.adb_shell.return_value = "mInputShown=false"

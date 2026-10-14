@@ -130,7 +130,10 @@ class MaestroMCP:
         content = [c for c in result.get("content", []) if VIEWER_NOTICE not in c.get("text", "")]
         if result.get("isError"):
             text = " ".join(c.get("text", "") for c in content).strip()
-            raise MaestroError(text.removeprefix("Failed to run flow: ") or f"Maestro tool '{name}' failed")
+            text = text.removeprefix("Failed to run flow: ") or f"Maestro tool '{name}' failed"
+            if "Illegal character" in text:
+                text += " (the device sent a broken view hierarchy: restart the emulator)"
+            raise MaestroError(text)
         return content
 
     def close(self, grace=10):
