@@ -1,8 +1,9 @@
+import time
 from datetime import timedelta
 
 from robotlibcore import keyword
 
-from ..locators import to_selector
+from ..locators import matches, to_selector
 from ..mcp import MaestroError
 
 
@@ -39,18 +40,27 @@ class TouchKeywords:
 
     @keyword
     def scroll_down(self, locator: str, timeout: timedelta = timedelta(seconds=10),
-                    retry_interval: timedelta = timedelta(seconds=1)):
+                    retry_interval: timedelta = timedelta(seconds=1), x: float | None = None):
         """Scrolls down until the element matching `locator` is visible, or fails after `timeout`.
+
+        `x` swipes along that column, in percent of the screen width, instead of the middle: a
+        signature pad, map or canvas in the middle would take the swipe as a drawing. With `x`
+        the scroll also stops early when the screen no longer changes (the end of the content).
+
+        | `Scroll Down` | id=submit | x=2 |
 
         `retry_interval` is accepted for AppiumLibrary compatibility and ignored.
         """
-        self._scroll(locator, "DOWN", timeout)
+        self._scroll(locator, "DOWN", timeout, x)
 
     @keyword
     def scroll_up(self, locator: str, timeout: timedelta = timedelta(seconds=10),
-                  retry_interval: timedelta = timedelta(seconds=1)):
-        """Scrolls up until the element matching `locator` is visible, or fails after `timeout`."""
-        self._scroll(locator, "UP", timeout)
+                  retry_interval: timedelta = timedelta(seconds=1), x: float | None = None):
+        """Scrolls up until the element matching `locator` is visible, or fails after `timeout`.
+
+        `x` works as in `Scroll Down`.
+        """
+        self._scroll(locator, "UP", timeout, x)
 
     @keyword
     def tap(self, locator: str, count: int = 1):
@@ -66,10 +76,32 @@ class TouchKeywords:
     def _swipe(self, start, end, duration):
         self.lib.run_commands({"swipe": {"start": start, "end": end, "duration": ms(duration)}})
 
-    def _scroll(self, locator, direction, timeout):
+    def _scroll(self, locator, direction, timeout, x=None):
+        selector = to_selector(locator)
         try:
-            self.lib.run_commands({"scrollUntilVisible": {
-                "element": to_selector(locator), "direction": direction, "timeout": ms(timeout)}})
+            if x is None:
+                self.lib.run_commands({"scrollUntilVisible": {
+                    "element": selector, "direction": direction, "timeout": ms(timeout)}})
+                return
+            if self._scroll_column(selector, direction, timeout, x):
+                return
         except MaestroError:
-            raise AssertionError(f"Element '{locator}' was not found after scrolling "
-                                 f"{direction.lower()} for {timeout.total_seconds():g} seconds.") from None
+            pass
+        raise AssertionError(f"Element '{locator}' was not found after scrolling "
+                             f"{direction.lower()} for {timeout.total_seconds():g} seconds.")
+
+    def _scroll_column(self, selector, direction, timeout, x):
+        # 75% to 40%: a swipe long enough to move a page, short of the edges where system
+        # gestures and pinned bars sit.
+        start, end = (75, 40) if direction == "DOWN" else (40, 75)
+        deadline = time.monotonic() + timeout.total_seconds()
+        before = None
+        while time.monotonic() < deadline:
+            screen = self.lib.elements()
+            if any(matches(e, selector) for e in screen):
+                return True
+            if screen == before:
+                break
+            before = screen
+            self._swipe(f"{x:g}%, {start}%", f"{x:g}%, {end}%", timedelta(milliseconds=400))
+        return False
