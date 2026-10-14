@@ -113,6 +113,12 @@ class ActionKeywordsTest(KeywordTest):
             {"pressKey": "Enter"},
         ])
 
+    def test_get_text_falls_back_to_the_text_inside_a_wrapper(self):
+        wrappers = [{"rid": "row", "c": [{"c": [{"a11y": "first"}]}]}, {"rid": "row", "a11y": "second"},
+                    {"rid": "row"}]
+        with mock.patch.object(self.lib, "screen", return_value=wrappers):
+            self.assertEqual(self.run_kw("get_text", "id=row", first_only=False), ["first", "second", ""])
+
     def test_hide_keyboard_presses_only_when_a_keyboard_is_shown(self):
         self.run_kw("hide_keyboard")
         self.lib.adb_shell.return_value = "mInputShown=false"

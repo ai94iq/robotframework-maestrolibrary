@@ -12,6 +12,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions: [Sem
 - [0.1.2](#012---2026-10-07) to [0.1.0](#010---2026-10-07)
 
 ## [Unreleased]
+### Changed
+- `Get Text` on an element with no text of its own (a Flutter `Semantics(identifier:)` wrapper)
+  returns the first text inside it instead of an empty string.
 
 ## [0.6.3] - 2026-10-11
 ### Changed
