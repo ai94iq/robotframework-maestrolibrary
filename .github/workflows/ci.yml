@@ -1,4 +1,4 @@
-# Device-free checks on every push and pull request: unit tests with a coverage gate (the fake MCP
+# Device-free checks on a release tag or manual run: unit tests with a coverage gate (the fake MCP
 # server stands in for Maestro), security scans, a Robot dry run of the acceptance suites, libdoc,
 # build and twine check. The acceptance suites themselves need an Android device or emulator.
 # Studio's Qt tests run offscreen on Linux, Windows and macOS.
@@ -8,9 +8,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
     tags: ['v*.*.*']
-  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -71,7 +69,7 @@ jobs:
   bundles:
     # Studio desktop bundles: an LGPL, decode-only FFmpeg (no x264 or x265), PyAV built on it, PyInstaller, and the
     # bundle's own --self-check, which fails the job on any GPL or nonfree part (packaging/build_bundle.py).
-    # Every push and pull request builds and checks all four; only a tag attaches them to a release.
+    # Every run builds and checks all four; only a tag attaches them to a release.
     strategy:
       fail-fast: false
       matrix:
