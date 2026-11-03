@@ -5,6 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions: [Sem
 ## Contents
 
 - [Unreleased](#unreleased)
+- [1.0.0](#100---2026-11-03)
 - [0.7.0](#070---2026-10-14)
 - [0.6.3](#063---2026-10-11) to [0.6.0](#060---2026-10-11)
 - [0.5.0](#050---2026-10-10)
@@ -13,6 +14,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions: [Sem
 - [0.1.2](#012---2026-10-07) to [0.1.0](#010---2026-10-07)
 
 ## [Unreleased]
+
+## [1.0.0] - 2026-11-03
 ### Added
 - `Screenshot Should Match` shows the difference image Maestro writes (`<reference>_diff.png`)
   when the comparison fails on pixels; a size mismatch writes none, so nothing is shown.
@@ -26,6 +29,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions: [Sem
   `SEARCH_ENTRY=Search Settings`), and 47/50 on the same AVD headless, where the two failures were
   order-dependent and passed alone and in the windowed run, and the scrcpy test skipped without a
   display.
+
+### Upgrade guide (from 0.7.0)
+
+- Update the package: `pip install --upgrade robotframework-maestrolibrary` (1.0.0).
+- Maestro CLI: 2.11.0 or newer; measured on 2.12.1. No keyword changes are needed for the
+  upgrade itself.
+- If you run the acceptance suite on a phone whose Settings differs from the stock emulator
+  image, pass `SEARCH_APP`, `SEARCH` and `SEARCH_ENTRY`. Their defaults are unchanged, so the
+  suite still runs as before on an emulator.
+- `Screenshot Should Match`: nothing to change. A pixel mismatch now leaves
+  `<reference>_diff.png` beside the reference and links it in the log; a size mismatch
+  writes none.
+- No breaking changes. `ROBOT_LIBRARY_VERSION` is `1.0.0`. `__version__` moved from `0.7.0`
+  to `1.0.0`.
 
 ## [0.7.0] - 2026-10-14
 ### Added
