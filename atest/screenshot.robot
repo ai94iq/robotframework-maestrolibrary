@@ -19,6 +19,17 @@ Screenshot Should Match Fails On A Different Size
     ${reference}=    Capture Element Screenshot    regex=Network.*    small.png
     Run Keyword And Expect Error    *size mismatch*    Screenshot Should Match    ${reference}
 
+Screenshot Should Match Shows Its Difference Image
+    # Maestro writes <reference>_diff.png only on a pixel difference, not on a size mismatch.
+    Set Dark Mode    False
+    ${reference}=    Capture Element Screenshot    regex=Network.*    diff-ref.png
+    Set Dark Mode    True
+    Open Application    ${SETTINGS}
+    Run Keyword And Expect Error    *threshold not met*    Screenshot Should Match    ${reference}
+    ...    threshold=100    locator=regex=Network.*
+    File Should Exist    ${OUTPUT DIR}/diff-ref_diff.png
+    [Teardown]    Run Keywords    Set Dark Mode    False    AND    Close All Applications
+
 Screen Recording Produces A Video
     Start Screen Recording
     Swipe By Percent    50    70    50    30

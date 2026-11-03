@@ -14,6 +14,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions: [Sem
 
 ## [Unreleased]
 ### Added
+- `Screenshot Should Match` shows the difference image Maestro writes (`<reference>_diff.png`)
+  when the comparison fails on pixels; a size mismatch writes none, so nothing is shown.
 - The acceptance suite takes the Settings search field and the label that opens it from
   `${SEARCH}` and `${SEARCH_ENTRY}` (defaults: the stock emulator's Google search package and
   "Search settings"), and `atest/keyevent.robot` uses the same variable instead of its own literal,

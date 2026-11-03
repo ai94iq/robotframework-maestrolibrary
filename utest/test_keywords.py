@@ -4,6 +4,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from datetime import timedelta
 from unittest import mock
@@ -384,6 +385,28 @@ class ScreenshotKeywordsTest(KeywordTest):
         with self.assertRaisesRegex(AssertionError, "Reference screenshot .*missing.png' does not exist"):
             self.run_kw("screenshot_should_match", os.path.join(self.tmp, "missing.png"))
         self.assertFalse(os.path.exists(self.log))  # Maestro was never called
+
+    def _failed_match(self, diff_age=None):
+        """Runs a failing comparison; `diff_age` sets the mtime of the diff image Maestro left."""
+        from MaestroLibrary.mcp import MaestroError
+        reference = os.path.join(self.tmp, "ref.png")
+        open(reference, "wb").close()
+        diff = os.path.join(self.tmp, "ref_diff.png")
+        open(diff, "wb").close()
+        # Maestro writes the diff during the call, so a fresh one is newer than the call's start.
+        age = time.time() + 5 if diff_age is None else diff_age
+        os.utime(diff, (age, age))
+        with mock.patch.object(self.lib, "run_commands", side_effect=MaestroError("threshold not met")), \
+                mock.patch("MaestroLibrary.keywords._screenshot.logger.info") as info, \
+                self.assertRaisesRegex(AssertionError, "threshold not met"):
+            self.run_kw("screenshot_should_match", reference)
+        return [call.args[0] for call in info.call_args_list if "ref_diff.png" in call.args[0]]
+
+    def test_screenshot_should_match_shows_the_difference_image(self):
+        self.assertEqual(len(self._failed_match()), 1)
+
+    def test_screenshot_should_match_ignores_an_older_difference_image(self):
+        self.assertEqual(self._failed_match(diff_age=0), [])  # left by an earlier comparison
 
     def test_screen_recording_start_stop_pull(self):
         self.lib.platform, self.lib.device, self.lib._adb = "android", "emulator-5554", "adb"

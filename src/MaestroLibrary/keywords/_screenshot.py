@@ -6,6 +6,7 @@ import signal
 import subprocess
 import tempfile
 import threading
+import time
 from datetime import timedelta
 
 from robot.api import logger
@@ -97,6 +98,9 @@ class ScreenshotKeywords:
         least `threshold` percent. The images must have the same size, so make an element reference with
         `Capture Element Screenshot` on the same device.
 
+        On a pixel difference Maestro writes ``<reference>_diff.png`` beside the reference (measured
+        with Maestro 2.12.1); the failure shows that image in the log.
+
         | `Screenshot Should Match` | ${CURDIR}/refs/logo.png | locator=id=logo |
         """
         if not os.path.isfile(reference):
@@ -104,10 +108,24 @@ class ScreenshotKeywords:
         command = {"path": maestro_path(reference), "thresholdPercentage": f"{threshold:g}"}
         if locator:
             command["cropOn"] = to_selector(locator)
+        started = time.time()
         try:
             self.lib.run_commands({"assertScreenshot": command})
         except MaestroError as err:
+            self._log_diff(reference, started)
             raise AssertionError(str(err)) from None
+
+    @staticmethod
+    def _log_diff(reference, started):
+        """Shows the difference image Maestro wrote for a failed comparison, when it wrote one."""
+        base = reference[:-4] if reference.lower().endswith(".png") else reference
+        diff = base + "_diff.png"
+        try:
+            if os.path.getmtime(diff) < started:  # a leftover from an earlier comparison
+                return
+        except OSError:
+            return
+        log_link(diff, 'Difference image: <img src="{src}" width="400">')
 
     @keyword
     def start_screen_recording(self, time_limit: timedelta = timedelta(minutes=3)):
