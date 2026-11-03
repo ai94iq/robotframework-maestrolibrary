@@ -10,13 +10,15 @@ import .lib files PyAV's MSVC build links against). PyAV is then built against P
 import argparse
 import glob
 import hashlib
+import http.client
 import os
 import shutil
 import subprocess
 import sys
 import tarfile
-import time
 import tempfile
+import time
+import urllib.error
 import urllib.request
 
 VERSION = "9.0.2"
@@ -30,34 +32,41 @@ CONFIGURE = [
 ]
 
 
+# Network failures only: URLError covers resets and timeouts, HTTPException a body cut off midway (IncompleteRead).
+# A local write error, such as a full disk, is not retried.
+NETWORK_ERRORS = (urllib.error.URLError, http.client.HTTPException, TimeoutError, ConnectionError)
+
+
 def fetch(folder, attempts=5):
-    """Downloads and verifies the FFmpeg source, retrying transient network failures."""
+    """Downloads, verifies and unpacks the FFmpeg source; returns its folder."""
     path = os.path.join(folder, os.path.basename(URL))
-    last = None
+    download(path, attempts)
+    verify(path)
+    with tarfile.open(path) as tar:
+        tar.extractall(folder, filter="data")             # no links or paths outside the folder
+    return os.path.join(folder, f"ffmpeg-{VERSION}")
+
+
+def download(path, attempts):
+    """Saves URL to `path`, retrying network failures with a doubling wait."""
     for attempt in range(1, attempts + 1):
         try:
             with urllib.request.urlopen(URL, timeout=120) as answer, open(path, "wb") as out:   # nosec B310 - fixed https URL
                 out.write(answer.read())
-        except (urllib.error.URLError, TimeoutError, ConnectionResetError, OSError) as exc:
-            last = exc
-            if attempt < attempts:
-                delay = 5 * (2 ** (attempt - 1))
-                print(f"fetch attempt {attempt}/{attempts} failed: {exc}; retrying in {delay}s",
-                      file=sys.stderr, flush=True)
-                time.sleep(delay)
-                try:
-                    os.remove(path)
-                except OSError:
-                    pass
-                continue
-            raise SystemExit(f"Could not fetch {URL} after {attempts} attempts: {last}") from last
-        with open(path, "rb") as f:
-            digest = hashlib.sha256(f.read()).hexdigest()
-        if digest != SHA256:
-            raise SystemExit(f"{URL} has SHA-256 {digest}, expected {SHA256}; refusing to build it.")
-        with tarfile.open(path) as tar:
-            tar.extractall(folder, filter="data")             # no links or paths outside the folder
-        return os.path.join(folder, f"ffmpeg-{VERSION}")
+            return
+        except NETWORK_ERRORS as exc:
+            if attempt == attempts:
+                raise SystemExit(f"Could not fetch {URL} after {attempts} attempts: {exc}") from exc
+            delay = 5 * 2 ** (attempt - 1)
+            print(f"fetch attempt {attempt}/{attempts} failed: {exc}; retrying in {delay}s", file=sys.stderr, flush=True)
+            time.sleep(delay)
+
+
+def verify(path):
+    with open(path, "rb") as f:
+        digest = hashlib.sha256(f.read()).hexdigest()
+    if digest != SHA256:
+        raise SystemExit(f"{URL} has SHA-256 {digest}, expected {SHA256}; refusing to build it.")
 
 
 def main(argv=None):
