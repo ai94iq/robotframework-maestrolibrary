@@ -20,6 +20,7 @@ from ._device import maestro_path
 
 EMBED = "EMBED"
 ADB_TIMEOUT_S = 60
+MTIME_STEP_S = 2  # FAT and some network shares keep modification times in 2 s steps
 
 
 def output_dir():
@@ -123,7 +124,7 @@ class ScreenshotKeywords:
         base = reference[:-4] if reference.lower().endswith(".png") else reference
         diff = base + "_diff.png"
         try:
-            if os.path.getmtime(diff) < started:  # a leftover from an earlier comparison
+            if os.path.getmtime(diff) < started - MTIME_STEP_S:  # a leftover from an earlier comparison
                 return
         except OSError:
             return
