@@ -112,7 +112,7 @@ class MaestroMCP:
             "capabilities": {},
             "clientInfo": {"name": "robotframework-maestrolibrary", "version": __version__},
         }, timeout)
-        # Maestro 2.11.0 answers serverInfo.name "maestro" (measured); anything else took its name.
+        # Maestro 2.11.0 and 2.12.1 answer serverInfo.name "maestro" (measured); anything else took its name.
         server = result.get("serverInfo", {}).get("name")
         if server != "maestro":
             self.close(grace=0)

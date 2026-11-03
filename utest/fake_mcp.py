@@ -1,4 +1,4 @@
-"""Stand-in for `maestro mcp`: answers like the real server, as measured with Maestro CLI 2.11.0."""
+"""Stand-in for `maestro mcp`: answers like the real server, as measured with Maestro CLI 2.11.0 and 2.12.1."""
 
 import json
 import os

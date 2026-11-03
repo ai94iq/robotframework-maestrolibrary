@@ -13,6 +13,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions: [Sem
 - [0.1.2](#012---2026-10-07) to [0.1.0](#010---2026-10-07)
 
 ## [Unreleased]
+### Changed
+- Maestro 2.12.1 ran the acceptance suite: 50/50 on a Pixel 9 AVD with a window, 47/50 on the
+  same AVD headless (two order-dependent flakes passed alone and in the windowed run; the scrcpy
+  test was skipped without a display), and 34/50 on a Samsung A70, whose 16 failures come from
+  Settings labels and ids the suite takes from the emulator image (Maestro 2.11.0 failed 9 of the
+  11 element tests on that phone).
 
 ## [0.7.0] - 2026-10-14
 ### Added
