@@ -15,6 +15,7 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import time
 import tempfile
 import urllib.request
 
@@ -29,17 +30,34 @@ CONFIGURE = [
 ]
 
 
-def fetch(folder):
+def fetch(folder, attempts=5):
+    """Downloads and verifies the FFmpeg source, retrying transient network failures."""
     path = os.path.join(folder, os.path.basename(URL))
-    with urllib.request.urlopen(URL, timeout=120) as answer, open(path, "wb") as out:   # nosec B310 - fixed https URL
-        out.write(answer.read())
-    with open(path, "rb") as f:
-        digest = hashlib.sha256(f.read()).hexdigest()
-    if digest != SHA256:
-        raise SystemExit(f"{URL} has SHA-256 {digest}, expected {SHA256}; refusing to build it.")
-    with tarfile.open(path) as tar:
-        tar.extractall(folder, filter="data")             # no links or paths outside the folder
-    return os.path.join(folder, f"ffmpeg-{VERSION}")
+    last = None
+    for attempt in range(1, attempts + 1):
+        try:
+            with urllib.request.urlopen(URL, timeout=120) as answer, open(path, "wb") as out:   # nosec B310 - fixed https URL
+                out.write(answer.read())
+        except (urllib.error.URLError, TimeoutError, ConnectionResetError, OSError) as exc:
+            last = exc
+            if attempt < attempts:
+                delay = 5 * (2 ** (attempt - 1))
+                print(f"fetch attempt {attempt}/{attempts} failed: {exc}; retrying in {delay}s",
+                      file=sys.stderr, flush=True)
+                time.sleep(delay)
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
+                continue
+            raise SystemExit(f"Could not fetch {URL} after {attempts} attempts: {last}") from last
+        with open(path, "rb") as f:
+            digest = hashlib.sha256(f.read()).hexdigest()
+        if digest != SHA256:
+            raise SystemExit(f"{URL} has SHA-256 {digest}, expected {SHA256}; refusing to build it.")
+        with tarfile.open(path) as tar:
+            tar.extractall(folder, filter="data")             # no links or paths outside the folder
+        return os.path.join(folder, f"ffmpeg-{VERSION}")
 
 
 def main(argv=None):
