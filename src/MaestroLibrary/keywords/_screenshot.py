@@ -1,4 +1,5 @@
 import base64
+import html
 import itertools
 import os
 import pathlib
@@ -42,7 +43,8 @@ def log_link(path, label):
         src = os.path.relpath(path, outdir).replace(os.sep, "/")
     except ValueError:  # Windows: path and output dir are on different drives
         src = pathlib.Path(path).resolve().as_uri()
-    logger.info(f'<a href="{src}">{label.format(src=src)}</a>', html=True)
+    safe = html.escape(src, quote=True)
+    logger.info(f'<a href="{safe}">{label.format(src=safe)}</a>', html=True)
 
 
 class ScreenshotKeywords:
@@ -116,7 +118,7 @@ class ScreenshotKeywords:
             raise AssertionError(str(err)) from None
 
     @staticmethod
-    def _log_diff(reference, started):
+    def _log_diff(reference: str, started: float) -> None:
         """Shows the difference image Maestro wrote for a failed comparison, when it wrote one."""
         base = reference[:-4] if reference.lower().endswith(".png") else reference
         diff = base + "_diff.png"
