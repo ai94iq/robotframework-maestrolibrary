@@ -5,6 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions: [Sem
 ## Contents
 
 - [Unreleased](#unreleased)
+- [1.0.1](#101---2026-11-03)
 - [1.0.0](#100---2026-11-03)
 - [0.7.0](#070---2026-10-14)
 - [0.6.3](#063---2026-10-11) to [0.6.0](#060---2026-10-11)
@@ -14,6 +15,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions: [Sem
 - [0.1.2](#012---2026-10-07) to [0.1.0](#010---2026-10-07)
 
 ## [Unreleased]
+
+## [1.0.1] - 2026-11-03
+### Fixed
+- `Screenshot Should Match` also shows a difference image on a file system that keeps
+  modification times in 2 s steps (FAT, some network shares), where a fresh diff could read as
+  older than the comparison and was skipped.
+- The Studio bundle build retries the FFmpeg source download on network failures, a body cut off
+  midway included, and stops at once on a local write error such as a full disk.
 
 ## [1.0.0] - 2026-11-03
 ### Added
