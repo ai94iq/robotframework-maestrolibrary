@@ -14,10 +14,10 @@ Press Keycode Back Leaves A Sub Screen
 
 Press Key Types Into The Search Field
     [Teardown]    Terminate Application    ${SEARCH_APP}
-    Click Text    Search settings    exact_match=True
+    Click Text    ${SEARCH_ENTRY}    exact_match=True
     Input Text Into Current Element    wifi
     Press Key    Backspace
-    Element Text Should Be    id=com.google.android.settings.intelligence:id/open_search_view_edit_text    wif
+    Element Text Should Be    ${SEARCH}    wif
     Press Key    Back
 
 Unsupported Keycode Fails Fast

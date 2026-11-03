@@ -5,10 +5,6 @@ Test Setup        Open Application    ${SETTINGS}
 Suite Teardown    Close All Applications
 
 
-*** Variables ***
-${SEARCH}         id=com.google.android.settings.intelligence:id/open_search_view_edit_text
-
-
 *** Test Cases ***
 Page Text And Element Checks
     Page Should Contain Text    Network
@@ -48,7 +44,7 @@ Get Element Attribute And Enabled State
 
 Type, Read Back And Clear Text
     [Teardown]    Terminate Application    ${SEARCH_APP}
-    Click Text    Search settings    exact_match=True
+    Click Text    ${SEARCH_ENTRY}    exact_match=True
     Input Text    ${SEARCH}    wifi
     Element Text Should Be    ${SEARCH}    wifi
     Input Text Into Current Element    \ calling
@@ -80,7 +76,7 @@ Hide Keyboard Without A Keyboard Stays In The App
     Expect Element    Network & internet    visible
 
 Is Keyboard Shown Follows The Keyboard
-    Click Text    Search settings    exact_match=True
+    Click Text    ${SEARCH_ENTRY}    exact_match=True
     ${shown}=    Is Keyboard Shown
     Should Be True    ${shown}
     Hide Keyboard

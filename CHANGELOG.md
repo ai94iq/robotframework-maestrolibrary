@@ -13,12 +13,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions: [Sem
 - [0.1.2](#012---2026-10-07) to [0.1.0](#010---2026-10-07)
 
 ## [Unreleased]
+### Added
+- The acceptance suite takes the Settings search field and the label that opens it from
+  `${SEARCH}` and `${SEARCH_ENTRY}` (defaults: the stock emulator's Google search package and
+  "Search settings"), and `atest/keyevent.robot` uses the same variable instead of its own literal,
+  so the suite also runs on a phone whose Settings differs from the emulator image.
 ### Changed
-- Maestro 2.12.1 ran the acceptance suite: 50/50 on a Pixel 9 AVD with a window, 47/50 on the
-  same AVD headless (two order-dependent flakes passed alone and in the windowed run; the scrcpy
-  test was skipped without a display), and 34/50 on a Samsung A70, whose 16 failures come from
-  Settings labels and ids the suite takes from the emulator image (Maestro 2.11.0 failed 9 of the
-  11 element tests on that phone).
+- Maestro 2.12.1 ran the acceptance suite: 50/50 on a Pixel 9 AVD with a window, 50/50 on a
+  Samsung A70 (`SEARCH_APP=com.android.settings.intelligence`, `SEARCH=android:id/search_src_text`,
+  `SEARCH_ENTRY=Search Settings`), and 47/50 on the same AVD headless, where the two failures were
+  order-dependent and passed alone and in the windowed run, and the scrcpy test skipped without a
+  display.
 
 ## [0.7.0] - 2026-10-14
 ### Added

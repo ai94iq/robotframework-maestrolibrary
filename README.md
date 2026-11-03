@@ -166,3 +166,6 @@ python -m unittest discover -s utest                        # no device needed
 robot --pythonpath src -d results atest                     # needs a running Android emulator
 python -m robot.libdoc --pythonpath src MaestroLibrary results/MaestroLibrary.html
 ```
+On a phone whose Settings differs from the emulator image, pass `SEARCH_APP`, `SEARCH` and
+`SEARCH_ENTRY` (see `atest/resource.resource`); e.g. for a Lineage build:
+`--variable SEARCH_APP:com.android.settings.intelligence --variable SEARCH:id=android:id/search_src_text --variable "SEARCH_ENTRY:Search Settings"`.
