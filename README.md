@@ -5,6 +5,8 @@ If you know [AppiumLibrary](https://github.com/serhatbolsu/robotframework-appium
 you already know the keyword names, the arguments and the `strategy=value` locators.
 There's no Appium server and no capabilities to manage. Maestro waits for the UI on every action.
 
+Site and screenshots: [ai94iq.github.io/robotframework-maestrolibrary](https://ai94iq.github.io/robotframework-maestrolibrary/).
+
 ## Contents
 
 - [Requirements](#requirements)
