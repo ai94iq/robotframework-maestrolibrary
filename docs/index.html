@@ -279,7 +279,7 @@ python -m MaestroLibrary.studio --app com.android.vending</pre>
 
   <footer>
     <span>MIT licensed.</span>
-    <span><a href="https://github.com/ai94iq/robotframework-maestrolibrary">Source</a>, <a href="https://github.com/ai94iq/robotframework-maestrolibrary/issues">Issues</a>, <a href="https://github.com/ai94iq/robotframework-maestrolibrary/blob/main/CHANGELOG.md">Changelog</a>, <a href="https://pypi.org/project/robotframework-maestrolibrary/">PyPI</a></span>
+    <span>Updated 2026-11-06. <a href="https://github.com/ai94iq/robotframework-maestrolibrary">Source</a>, <a href="https://github.com/ai94iq/robotframework-maestrolibrary/issues">Issues</a>, <a href="https://github.com/ai94iq/robotframework-maestrolibrary/blob/main/CHANGELOG.md">Changelog</a>, <a href="https://pypi.org/project/robotframework-maestrolibrary/">PyPI</a></span>
   </footer>
 </div>
 
@@ -295,12 +295,31 @@ python -m MaestroLibrary.studio --app com.android.vending</pre>
   } else { chart.classList.add('in'); }
 
   var status = document.querySelector('.copied');
+  function copyToClipboard(text) {
+    var done = function () { status.textContent = 'Copied.'; setTimeout(function () { status.textContent = ''; }, 3500); };
+    var fail = function () { status.textContent = 'Select the text and copy it.'; };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, function () { execCopy(text) ? done() : fail(); });
+    } else {
+      execCopy(text) ? done() : fail();
+    }
+  }
+  function execCopy(text) {
+    try {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.top = '-9999px';
+      document.body.appendChild(ta);
+      ta.select();
+      var ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      return ok;
+    } catch (e) { return false; }
+  }
   document.querySelectorAll('[data-copy]').forEach(function (b) {
-    b.addEventListener('click', function () {
-      var done = function () { status.textContent = 'Copied.'; setTimeout(function () { status.textContent = ''; }, 3500); };
-      var fail = function () { status.textContent = 'Select the text and copy it.'; };
-      if (navigator.clipboard) { navigator.clipboard.writeText(b.getAttribute('data-copy')).then(done, fail); } else { fail(); }
-    });
+    b.addEventListener('click', function () { copyToClipboard(b.getAttribute('data-copy')); });
   });
 
   /* each step of the flow marks its lines on both sides: real flow2robot output */
