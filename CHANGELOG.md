@@ -5,6 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions: [Sem
 ## Contents
 
 - [Unreleased](#unreleased)
+- [1.0.2](#102---2026-11-05)
 - [1.0.1](#101---2026-11-03)
 - [1.0.0](#100---2026-11-03)
 - [0.7.0](#070---2026-10-14)
@@ -15,6 +16,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions: [Sem
 - [0.1.2](#012---2026-10-07) to [0.1.0](#010---2026-10-07)
 
 ## [Unreleased]
+
+## [1.0.2] - 2026-11-05
+### Changed
+- The PyPI Homepage link points to the new project site (GitHub Pages); the source link is now
+  listed as Source.
 
 ## [1.0.1] - 2026-11-03
 ### Fixed

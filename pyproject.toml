@@ -30,7 +30,8 @@ convert = ["pyyaml>=6.0.3"]   # flow2robot
 studio = ["PySide6>=6.12.0", "av>=19.0.1", "grpcio>=1.84.0"]   # python -m MaestroLibrary.studio
 
 [project.urls]
-Homepage = "https://github.com/ai94iq/robotframework-maestrolibrary"
+Homepage = "https://ai94iq.github.io/robotframework-maestrolibrary/"
+Source = "https://github.com/ai94iq/robotframework-maestrolibrary"
 Issues = "https://github.com/ai94iq/robotframework-maestrolibrary/issues"
 Changelog = "https://github.com/ai94iq/robotframework-maestrolibrary/blob/main/CHANGELOG.md"
 
