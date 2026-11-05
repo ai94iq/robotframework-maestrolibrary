@@ -6,7 +6,7 @@
 <title>robotframework-maestrolibrary: AppiumLibrary keywords, driven by Maestro</title>
 <meta name="description" content="Robot Framework keywords for mobile apps, driven by Maestro. The AppiumLibrary names and locators you know, with no Appium server. Studio records a test on a live device.">
 <meta name="color-scheme" content="light dark">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%23ffe24a'/%3E%3Cg fill='none' stroke='%2316181d' stroke-width='2' stroke-linecap='round'%3E%3Crect x='7.5' y='4' width='9' height='16' rx='2'/%3E%3Cpath d='M11 17h2'/%3E%3C/g%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%23ffe24a'/%3E%3Cg fill='none' stroke='%2316181d' stroke-width='2' stroke-linecap='round'%3E%3Crect x='5' y='9' width='14' height='10' rx='3'/%3E%3Cpath d='M12 9V5M9.5 13.5v1.5M14.5 13.5v1.5'/%3E%3C/g%3E%3C/svg%3E">
 <link rel="preload" href="fonts/bricolage-grotesque.woff2" as="font" type="font/woff2" crossorigin>
 <script>document.documentElement.classList.add('js')</script>
 <style>
@@ -15,14 +15,14 @@
 
 :root {
   color-scheme: light dark;
-  --page: #ffffff; --ink: #16181d; --mute: #62676f; --line: #e4e5e8;
+  --page: #ffffff; --ink: #16181d; --mute: #62676f; --line: #e4e5e8; --quiet: #d4d6da;
   --mark: #ffe24a; --on-mark: #16181d;
   --sans: "Bricolage Grotesque", system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: "Fragment Mono", ui-monospace, Menlo, Consolas, monospace;
   --swipe: cubic-bezier(.3, .7, .2, 1);
 }
 @media (prefers-color-scheme: dark) {
-  :root { --page: #15171c; --ink: #eceef0; --mute: #a2a7af; --line: #2c2f36; }
+  :root { --page: #15171c; --ink: #eceef0; --mute: #a2a7af; --line: #2c2f36; --quiet: #41454e; }
 }
 *, *::before, *::after { box-sizing: border-box; }
 html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
@@ -32,7 +32,6 @@ a { color: inherit; text-underline-offset: 3px; text-decoration-thickness: 1px; 
 :focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 h1, h2, h3, p, figure, pre, ul { margin: 0; }
 code, pre { font-family: var(--mono); }
-code { font-size: .86em; }
 .wrap { width: min(1160px, 100% - 48px); margin: 0 auto; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
@@ -45,7 +44,8 @@ code { font-size: .86em; }
 }
 
 header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 4px 24px; padding: 22px 0; }
-.brand { font-weight: 700; text-decoration: none; }
+.brand { display: inline-flex; align-items: center; gap: 9px; font-weight: 700; text-decoration: none; }
+.brand svg { width: 24px; height: 24px; flex: none; }
 nav { display: flex; flex-wrap: wrap; gap: 0 22px; font-size: 16px; }
 nav a { padding: 6px 0; text-decoration: none; }
 nav a:hover { text-decoration: underline; }
@@ -56,10 +56,11 @@ h1 { font-size: clamp(50px, 6.3vw, 84px); font-weight: 800; line-height: 1.12; l
 h1 .hl { --mh: 80%; padding: 0 .14em; margin: 0 -.14em; border-radius: .06em .12em .08em .05em; }
 .lede { margin-top: 26px; font-size: 21px; line-height: 1.45; max-width: 26em; }
 .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 30px; }
-.btn { display: inline-flex; align-items: center; gap: 9px; min-height: 46px; padding: 8px 16px; border: 1.5px solid var(--ink); border-radius: 8px; background: none; color: var(--ink); font: 600 16px/1.3 var(--sans); text-align: left; text-decoration: none; cursor: pointer; }
+.btn { display: inline-flex; align-items: center; gap: 9px; min-height: 46px; padding: 0 16px; border: 1.5px solid var(--ink); border-radius: 8px; background: none; color: var(--ink); font: 600 16px/1.2 var(--sans); text-decoration: none; cursor: pointer; }
 .btn svg { width: 17px; height: 17px; flex: none; }
-.btn.copy { background: var(--ink); color: var(--page); font: 400 14px/1.4 var(--mono); }
+.btn.copy { background: var(--ink); color: var(--page); font: 400 14px/1.2 var(--mono); }
 .btn:hover { background: var(--mark); border-color: var(--mark); color: var(--on-mark); }
+.copied { min-height: 28px; margin-top: 8px; font-size: 16px; color: var(--mute); }
 
 .tabs { display: none; flex-wrap: wrap; gap: 2px; margin: 0 0 18px -9px; }
 .js .tabs { display: flex; }
@@ -74,34 +75,57 @@ h1 .hl { --mh: 80%; padding: 0 .14em; margin: 0 -.14em; border-radius: .06em .12
 .file li::before { content: counter(ln); position: absolute; left: 0; width: 2em; text-align: right; }
 .out { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); color: var(--mute); font-size: 13px; line-height: 20px; white-space: pre-wrap; overflow-wrap: anywhere; }
 
+/* keywords */
 section { padding: 72px 0; border-top: 1px solid var(--line); }
 h2 { font-size: clamp(32px, 4.2vw, 52px); font-weight: 800; line-height: 1.1; letter-spacing: -.02em; max-width: 18em; text-wrap: balance; }
+.sub { margin-top: 16px; max-width: 38em; color: var(--mute); }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 26px; margin-top: 30px; font-size: 16px; color: var(--mute); }
+.legend i { display: inline-block; width: 22px; height: 12px; margin-right: 8px; border-radius: 2px; background: var(--quiet); }
+.legend i.hit { background: var(--mark); }
+.dims { --reach: .78; display: grid; grid-template-columns: minmax(0, 1fr); gap: 26px; max-width: 900px; margin-top: 28px; }
+.qh { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; margin-bottom: 6px; }
+.qh h3 { font-size: 18px; font-weight: 600; }
+.qh span { flex: none; font-weight: 700; font-size: 16px; }
+.row { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
+.bar { flex: 0 1 calc(var(--w) * var(--reach)); min-width: 0; height: 14px; border-radius: 2px; background: linear-gradient(var(--quiet), var(--quiet)) no-repeat 0 0 / 100% 100%; }
+.bar.hit { background-image: linear-gradient(var(--mark), var(--mark)); }
+.val { flex: none; font: 400 13.5px/1.3 var(--mono); color: var(--mute); }
+.note { margin-top: 26px; font-size: 16px; color: var(--mute); }
+
+/* features, studio and setup */
+.ways { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 48px; margin-top: 36px; align-items: start; }
 h3 { font-size: 18px; font-weight: 600; }
-.sub { margin-top: 16px; max-width: 42em; color: var(--mute); }
-
-.feats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 40px 48px; margin-top: 44px; }
-.feats p { margin-top: 8px; font-size: 16px; color: var(--mute); }
-.feats code { color: var(--ink); }
-
-.shots { display: grid; grid-template-columns: minmax(0, 1fr); gap: 32px; margin-top: 44px; }
+.ways h3 { margin-bottom: 12px; }
+.table-wrap { overflow-x: auto; }
+table { border-collapse: collapse; font-size: 16px; }
+th, td { text-align: left; padding: 5px 24px 5px 0; vertical-align: top; }
+th { color: var(--mute); font-weight: 400; }
+td code { font-size: 14px; white-space: nowrap; }
+.feats { margin-top: 40px; }
+.feats table { width: 100%; }
+.feats td:first-child { width: 30%; min-width: 230px; font-weight: 600; }
+.feats td { padding-top: 9px; padding-bottom: 9px; }
+.ways pre { font-size: 14px; line-height: 24px; overflow-x: auto; }
+.ways pre + p { margin-top: 12px; font-size: 16px; color: var(--mute); }
+.shots { display: grid; grid-template-columns: minmax(0, 1fr); gap: 32px; margin-top: 48px; }
 .shot-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
 .shots img { display: block; width: 100%; height: auto; }
 figcaption { margin-top: 8px; max-width: 46em; font-size: 16px; color: var(--mute); }
-figcaption code { color: var(--ink); }
-.shots + .actions { margin-top: 32px; }
-
-.cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 40px 48px; margin-top: 40px; }
+figcaption code { font-size: 14px; color: var(--ink); }
+.cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 40px 48px; margin-top: 36px; }
 .cols ul { padding: 0; margin-top: 10px; list-style: none; font-size: 16px; color: var(--mute); }
 .cols li { padding: 2px 0; }
 .cols p { margin-top: 10px; font-size: 16px; color: var(--mute); }
 
-footer { display: flex; flex-wrap: wrap; gap: 4px 20px; padding: 26px 0 40px; border-top: 1px solid var(--line); color: var(--mute); font-size: 16px; }
+footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 24px; padding: 26px 0 40px; border-top: 1px solid var(--line); color: var(--mute); font-size: 16px; }
 
 /* one motion, everywhere: the stroke being drawn left to right */
 @keyframes swipe { from { background-size: 0 var(--mh, 100%); color: var(--from, var(--mute)); } }
 @media (prefers-reduced-motion: no-preference) {
   h1 .hl { --from: var(--ink); animation: swipe .4s var(--swipe) .3s backwards; }
   .on .t { animation: swipe .42s var(--swipe) var(--d, 0s) backwards; }
+  .js .bar { background-size: 0 100%; }
+  .js .in .bar { background-size: 100% 100%; transition: background-size .7s var(--swipe) calc(var(--i) * 70ms); }
 }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
@@ -109,18 +133,24 @@ footer { display: flex; flex-wrap: wrap; gap: 4px 20px; padding: 26px 0 40px; bo
 @media (max-width: 960px) {
   .hero { grid-template-columns: minmax(0, 1fr); gap: 44px; padding: 32px 0 64px; }
   h1 { font-size: clamp(40px, 13.4vw, 84px); }
-  .feats, .cols { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ways { grid-template-columns: minmax(0, 1fr); gap: 36px; }
+  .cols { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 600px) {
   .wrap { width: calc(100% - 32px); }
   body { font-size: 17px; }
   .lede { font-size: 19px; }
   section { padding: 52px 0; }
-  .btn.copy { font-size: 12.5px; padding: 8px 12px; }
+  .btn.copy { font-size: 12px; padding: 0 10px; gap: 7px; }
   .file { font-size: 12px; line-height: 20px; }
   .file li { min-height: 20px; padding-left: 2.6em; }
   .fname, .out { font-size: 12px; line-height: 18px; }
-  .feats, .cols { grid-template-columns: minmax(0, 1fr); gap: 28px; }
+  .dims { --reach: .5; }
+  .feats thead { display: none; }
+  .feats tr, .feats td { display: block; width: auto; padding: 0; }
+  .feats tr + tr { margin-top: 18px; }
+  .feats td code { white-space: normal; overflow-wrap: anywhere; }
+  .cols { grid-template-columns: minmax(0, 1fr); gap: 28px; }
   .shot-scroll img { min-width: 900px; }
 }
 </style>
@@ -129,8 +159,11 @@ footer { display: flex; flex-wrap: wrap; gap: 4px 20px; padding: 26px 0 40px; bo
 <div class="wrap" id="top">
 
   <header>
-    <a class="brand" href="#top">robotframework-maestrolibrary</a>
-    <nav aria-label="Sections">
+    <a class="brand" href="#top">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="8" width="16" height="11" rx="3"/><path d="M12 8V5"/><circle cx="12" cy="4" r="1"/><path d="M9 13v1.5M15 13v1.5"/><path d="M2 13v3M22 13v3"/></svg>
+      robotframework-maestrolibrary
+    </a>
+    <nav aria-label="Main">
       <a href="#features">Features</a><a href="#studio">Studio</a><a href="#get-started">Get started</a><a href="https://github.com/ai94iq/robotframework-maestrolibrary">GitHub</a><a href="https://pypi.org/project/robotframework-maestrolibrary/">PyPI</a>
     </nav>
   </header>
@@ -141,12 +174,13 @@ footer { display: flex; flex-wrap: wrap; gap: 4px 20px; padding: 26px 0 40px; bo
         <h1>Name every <br><mark class="hl">tap.</mark></h1>
         <p class="lede">Robot Framework keywords for mobile apps, driven by <a href="https://maestro.dev">Maestro</a>. The AppiumLibrary names, arguments and locators you know, with no Appium server and no capabilities.</p>
         <div class="actions">
-          <button class="btn copy" type="button" data-copy="pip install robotframework-maestrolibrary" aria-label="Copy the install command">
+          <button class="btn copy" type="button" data-copy="pip install robotframework-maestrolibrary">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>
-            <span>pip install robotframework-maestrolibrary</span>
+            pip install robotframework-maestrolibrary
           </button>
           <a class="btn" href="#studio">Record a test on a live device</a>
         </div>
+        <p class="copied" role="status" aria-live="polite"></p>
       </div>
 
       <div id="flow">
@@ -167,19 +201,55 @@ footer { display: flex; flex-wrap: wrap; gap: 4px 20px; padding: 26px 0 40px; bo
 
     <section id="features">
       <h2>Keywords you already know. Tests you write by tapping.</h2>
-      <div class="feats">
-        <div><h3>AppiumLibrary names, no Appium</h3><p>Click Text, Input Text, the five Wait Until keywords, Swipe, Capture Page Screenshot and more. Maestro waits for the UI on every action, so there are no sleeps.</p></div>
-        <div><h3>Tap a phone, get a Robot test</h3><p>A window shows the device live. Every action runs on it while the matching Robot line is recorded, with a locator and how many elements it matches.</p></div>
-        <div><h3>YAML to Robot, and back</h3><p>Convert a Maestro flow to a Robot test with <code>flow2robot</code>, or set <code>record_flows=True</code> and every command a test sends is written to a flow file.</p></div>
-        <div><h3>More than Appium had</h3><p>Run Flow, app permissions, Set Dark Mode, Set Airplane Mode, Add Media, Screenshot Should Match, and Travel for moving the location.</p></div>
-        <div><h3>Logs and mirroring</h3><p>On Android, every test's logcat is saved to its own file and linked in the log. Optional scrcpy mirroring shows the device while a suite runs.</p></div>
-        <div><h3>Six that work</h3><p><code>text=</code>, <code>accessibility_id=</code>, <code>id=</code>, <code>regex=</code>, <code>id_regex=</code> and <code>point=</code>. Anything else fails with a clear message.</p></div>
+      <p class="sub">How the keywords in MaestroLibrary 1.0.2 line up with AppiumLibrary 3.2.1, listed with Robot Framework's libdoc.</p>
+      <div class="legend"><span><i class="hit"></i>these keywords</span><span><i></i>the whole library</span><span>keyword count</span></div>
+      <div class="dims" id="chart" role="group" aria-label="Keyword counts: 53 of MaestroLibrary's 72 keywords share a name with AppiumLibrary, 46 also share argument names, 19 are added by Maestro, and 53 of AppiumLibrary's 110 keywords carry over">
+        <div class="q"><div class="qh"><h3>Same name as in AppiumLibrary</h3><span>74%</span></div>
+          <div class="row" style="--w:48.2%;--i:0"><div class="bar hit"></div><div class="val">53</div></div>
+          <div class="row" style="--w:65.5%;--i:1"><div class="bar"></div><div class="val">72 in MaestroLibrary</div></div></div>
+        <div class="q"><div class="qh"><h3>Same name and argument names</h3><span>64%</span></div>
+          <div class="row" style="--w:41.8%;--i:2"><div class="bar hit"></div><div class="val">46</div></div>
+          <div class="row" style="--w:65.5%;--i:3"><div class="bar"></div><div class="val">72 in MaestroLibrary</div></div></div>
+        <div class="q"><div class="qh"><h3>Added by Maestro</h3><span>26%</span></div>
+          <div class="row" style="--w:17.3%;--i:4"><div class="bar hit"></div><div class="val">19</div></div>
+          <div class="row" style="--w:65.5%;--i:5"><div class="bar"></div><div class="val">72 in MaestroLibrary</div></div></div>
+        <div class="q"><div class="qh"><h3>AppiumLibrary keywords that carry over</h3><span>48%</span></div>
+          <div class="row" style="--w:48.2%;--i:6"><div class="bar hit"></div><div class="val">53</div></div>
+          <div class="row" style="--w:100%;--i:7"><div class="bar"></div><div class="val">110 in AppiumLibrary</div></div></div>
       </div>
+      <p class="note">What isn't ported, and what behaves differently, is in the <a href="https://github.com/ai94iq/robotframework-maestrolibrary#coming-from-appiumlibrary">README</a>.</p>
+      <div class="table-wrap feats"><table>
+        <thead><tr><th>Feature</th><th>What you get</th></tr></thead>
+        <tbody>
+          <tr><td>AppiumLibrary names, no Appium</td><td>Click Text, Input Text, the five Wait Until keywords, Swipe, Capture Page Screenshot and more. Maestro waits for the UI on every action, so there are no sleeps.</td></tr>
+          <tr><td>Tap a phone, get a Robot test</td><td>A window shows the device live. Every action runs on it while the matching Robot line is recorded, with a locator and how many elements it matches.</td></tr>
+          <tr><td>YAML to Robot, and back</td><td>Convert a Maestro flow to a Robot test with <code>flow2robot</code>, or set <code>record_flows=True</code> and every command a test sends is written to a flow file.</td></tr>
+          <tr><td>More than Appium had</td><td>Run Flow, app permissions, Set Dark Mode, Set Airplane Mode, Add Media, Screenshot Should Match, and Travel for moving the location.</td></tr>
+          <tr><td>Logs and mirroring</td><td>On Android, every test's logcat is saved to its own file and linked in the log. Optional scrcpy mirroring shows the device while a suite runs.</td></tr>
+          <tr><td>Six locators that work</td><td><code>text=</code>, <code>accessibility_id=</code>, <code>id=</code>, <code>regex=</code>, <code>id_regex=</code> and <code>point=</code>. Anything else fails with a clear message.</td></tr>
+        </tbody></table></div>
     </section>
 
     <section id="studio">
       <h2>Pick an element. Get its locator. Tap it. It writes the line.</h2>
-      <p class="sub">Studio's Inspect mode shows each locator with how many elements it matches. Act mode runs your taps on the device and records them as Robot steps. Where an element has no unique locator, Studio records the tap with a note to ask for a test id.</p>
+      <div class="ways">
+        <div>
+          <h3>Studio, on a live device</h3>
+          <div class="table-wrap"><table>
+            <thead><tr><th>In Studio</th><th>Does</th></tr></thead>
+            <tbody>
+              <tr><td><code>Inspect</code></td><td>shows each locator with how many elements it matches</td></tr>
+              <tr><td><code>Act</code></td><td>runs your taps on the device and records them as Robot steps</td></tr>
+              <tr><td><code>No unique locator</code></td><td>records the tap with a note to ask for a test id</td></tr>
+            </tbody></table></div>
+        </div>
+        <div>
+          <h3>Install Studio</h3>
+          <pre>pip install "robotframework-maestrolibrary[studio]"
+python -m MaestroLibrary.studio --app com.android.vending</pre>
+          <p>Windows, Linux and macOS builds: <a href="https://github.com/ai94iq/robotframework-maestrolibrary/releases">releases</a> (unsigned).</p>
+        </div>
+      </div>
       <div class="shots">
         <figure>
           <div class="shot-scroll"><picture><source media="(prefers-color-scheme: dark)" srcset="screenshots/studio-inspect-dark.png"><img src="screenshots/studio-inspect.png" width="2000" height="1270" loading="lazy" alt="Studio inspecting the Display and touch row on an Android emulator: the element tree, and the suggested locator text=Display and touch marked unique"></picture></div>
@@ -189,13 +259,6 @@ footer { display: flex; flex-wrap: wrap; gap: 4px 20px; padding: 26px 0 40px; bo
           <div class="shot-scroll"><picture><source media="(prefers-color-scheme: dark)" srcset="screenshots/studio-recorded-dark.png"><img src="screenshots/studio-recorded.png" width="2000" height="1270" loading="lazy" alt="Studio after two taps: the Dark theme screen is open and the recorded test lists Open Application, Click Element text=Display and touch, and a Click Element by point with a GAP note"></picture></div>
           <figcaption>Act: two taps later the recorded test has three lines. The last one has no unique locator, so Studio adds a note to ask for a test id.</figcaption>
         </figure>
-      </div>
-      <div class="actions">
-        <button class="btn copy" type="button" data-copy='pip install "robotframework-maestrolibrary[studio]"' aria-label="Copy the Studio install command">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>
-          <span>pip install "robotframework-maestrolibrary[studio]"</span>
-        </button>
-        <a class="btn" href="https://github.com/ai94iq/robotframework-maestrolibrary/releases">Or download the Windows, Linux or macOS build</a>
       </div>
     </section>
 
@@ -211,27 +274,27 @@ footer { display: flex; flex-wrap: wrap; gap: 4px 20px; padding: 26px 0 40px; bo
 
   <footer>
     <span>MIT licensed.</span>
-    <a href="https://github.com/ai94iq/robotframework-maestrolibrary">Source</a>
-    <a href="https://github.com/ai94iq/robotframework-maestrolibrary/issues">Issues</a>
-    <a href="https://github.com/ai94iq/robotframework-maestrolibrary/blob/main/CHANGELOG.md">Changelog</a>
-    <a href="https://pypi.org/project/robotframework-maestrolibrary/">PyPI</a>
+    <span><a href="https://github.com/ai94iq/robotframework-maestrolibrary">Source</a>, <a href="https://github.com/ai94iq/robotframework-maestrolibrary/issues">Issues</a>, <a href="https://github.com/ai94iq/robotframework-maestrolibrary/blob/main/CHANGELOG.md">Changelog</a>, <a href="https://pypi.org/project/robotframework-maestrolibrary/">PyPI</a></span>
   </footer>
 </div>
 
 <script>
 (function () {
-  var said = document.getElementById('said');
+  /* the chart draws once it reaches the window */
+  var chart = document.getElementById('chart');
+  if ('IntersectionObserver' in window) {
+    var io = new IntersectionObserver(function (es) {
+      es.forEach(function (e) { if (e.isIntersecting) { chart.classList.add('in'); io.disconnect(); } });
+    }, { threshold: 0.2 });
+    io.observe(chart);
+  } else { chart.classList.add('in'); }
 
+  var status = document.querySelector('.copied');
   document.querySelectorAll('[data-copy]').forEach(function (b) {
     b.addEventListener('click', function () {
-      var label = b.querySelector('span'), old = label.textContent;
-      var show = function (text, ms) {
-        label.textContent = text; said.textContent = text;
-        setTimeout(function () { label.textContent = old; }, ms);
-      };
-      var done = function () { show('Copied', 1400); };
-      var fail = function () { show('Select and copy it from the page', 2200); };
-      if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(b.getAttribute('data-copy')).then(done, fail); } else { fail(); }
+      var done = function () { status.textContent = 'Copied.'; setTimeout(function () { status.textContent = ''; }, 3500); };
+      var fail = function () { status.textContent = 'Select the text and copy it.'; };
+      if (navigator.clipboard) { navigator.clipboard.writeText(b.getAttribute('data-copy')).then(done, fail); } else { fail(); }
     });
   });
 
@@ -244,6 +307,7 @@ footer { display: flex; flex-wrap: wrap; gap: 4px 20px; padding: 26px 0 40px; bo
   };
   var yaml = document.getElementById('yaml');
   var robot = document.getElementById('robot');
+  var said = document.getElementById('said');
   var keys = document.querySelectorAll('[data-step]');
 
   function mark(list, lines, delay) {
