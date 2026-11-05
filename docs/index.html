@@ -6,231 +6,329 @@
 <title>robotframework-maestrolibrary: AppiumLibrary keywords, driven by Maestro</title>
 <meta name="description" content="Robot Framework keywords for mobile apps, driven by Maestro. The AppiumLibrary names and locators you know, with no Appium server. Studio records a test on a live device.">
 <meta name="color-scheme" content="light dark">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%23ffe24a'/%3E%3Cg fill='none' stroke='%2316181d' stroke-width='2' stroke-linecap='round'%3E%3Crect x='5' y='9' width='14' height='10' rx='3'/%3E%3Cpath d='M12 9V5M9.5 13.5v1.5M14.5 13.5v1.5'/%3E%3C/g%3E%3C/svg%3E">
+<link rel="preload" href="fonts/bricolage-grotesque.woff2" as="font" type="font/woff2" crossorigin>
+<script>document.documentElement.classList.add('js')</script>
 <style>
+@font-face { font-family: "Bricolage Grotesque"; src: url(fonts/bricolage-grotesque.woff2) format("woff2"); font-weight: 200 800; font-display: swap; }
+@font-face { font-family: "Fragment Mono"; src: url(fonts/fragment-mono.woff2) format("woff2"); font-weight: 400; font-display: swap; }
+
 :root {
-  --ground: #e9ebee; --ink: #101114; --ink2: #3b3f47; --ink3: #5b606a;
-  --paper: #ffffff; --line: #101114; --accent: #c93a1f; --ok: #1d7a45;
-  --shadow: 0 14px 30px rgba(16, 17, 20, .22);
-  --sans: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
-  --mono: Consolas, "SF Mono", "Cascadia Mono", Menlo, monospace;
-  --hand: "Segoe Script", "Bradley Hand", "Comic Sans MS", cursive;
+  color-scheme: light dark;
+  --page: #ffffff; --ink: #16181d; --mute: #62676f; --line: #e4e5e8; --quiet: #d4d6da;
+  --mark: #ffe24a; --on-mark: #16181d;
+  --sans: "Bricolage Grotesque", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "Fragment Mono", ui-monospace, Menlo, Consolas, monospace;
+  --swipe: cubic-bezier(.3, .7, .2, 1);
 }
 @media (prefers-color-scheme: dark) {
-  :root {
-    --ground: #15171b; --ink: #f1f2f4; --ink2: #c3c7ce; --ink3: #9aa0ab;
-    --paper: #20232a; --line: #f1f2f4; --accent: #ff6a4d; --ok: #53c887;
-    --shadow: 0 14px 30px rgba(0, 0, 0, .5);
-  }
+  :root { --page: #15171c; --ink: #eceef0; --mute: #a2a7af; --line: #2c2f36; --quiet: #41454e; }
 }
-* { box-sizing: border-box; margin: 0; }
-html { scroll-behavior: smooth; }
-body { background: var(--ground); color: var(--ink); font: 1rem/1.5 var(--sans); }
-a { color: inherit; }
-:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
-.wrap { width: min(1180px, 100% - 48px); margin: 0 auto; }
-.mono { font-family: var(--mono); }
+*, *::before, *::after { box-sizing: border-box; }
+html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--page); color: var(--ink); font: 400 18px/1.55 var(--sans); }
+::selection { background: var(--mark); color: var(--on-mark); }
+a { color: inherit; text-underline-offset: 3px; text-decoration-thickness: 1px; }
+:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+h1, h2, h3, p, figure, pre, ul { margin: 0; }
+code, pre { font-family: var(--mono); }
+.wrap { width: min(1160px, 100% - 48px); margin: 0 auto; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
-header { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 18px 0; flex-wrap: wrap; }
-.brand { font-weight: 800; letter-spacing: .08em; text-transform: uppercase; font-size: .86rem; text-decoration: none; }
-nav { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
-nav a { padding: 8px 12px; min-height: 40px; display: inline-flex; align-items: center; font-weight: 700; font-size: .8rem; letter-spacing: .1em; text-transform: uppercase; text-decoration: none; }
-nav a.pill { background: var(--ink); color: var(--ground); border-radius: 6px; }
-
-.hero { display: grid; grid-template-columns: 1.05fr .95fr; gap: 40px; align-items: start; padding: 28px 0 72px; position: relative; }
-h1 { font: 900 clamp(2.6rem, 6.4vw, 5.4rem)/.95 var(--sans); letter-spacing: -.035em; }
-h1 span { color: var(--accent); }
-.lede { font-size: clamp(1.05rem, 1.7vw, 1.35rem); line-height: 1.45; margin-top: 22px; max-width: 34rem; color: var(--ink2); }
-.cta { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 28px; align-items: center; }
-.cmd { font: 700 1rem var(--mono); background: var(--ink); color: var(--ground); padding: 14px 16px; border-radius: 6px; border: 0; cursor: pointer; display: inline-flex; gap: 10px; align-items: center; text-align: left; min-height: 48px; }
-.cmd:hover { background: var(--accent); color: #fff; }
-.link { font-weight: 700; letter-spacing: .06em; text-transform: uppercase; font-size: .82rem; padding: 12px 4px; }
-
-.hero > * { min-width: 0; }
-.spread { position: relative; min-height: 520px; overflow: hidden; }
-.ph { position: absolute; background: #101114; border: 9px solid #fff; box-shadow: var(--shadow); padding: 8px; }
-.ph .scr { background: #f6f7f9; color: #111; border-radius: 4px; overflow: hidden; font: .72rem/1.3 var(--sans); }
-.ph .scr .q { margin: 10px; padding: 8px 12px; border-radius: 99px; background: #e4e7ec; }
-.ph .scr .r { display: flex; gap: 8px; align-items: center; padding: 10px 14px; border-bottom: 1px solid #0001; }
-.ph .scr .r i { width: 14px; height: 14px; border-radius: 50%; background: #c6cbd3; flex: none; }
-.ph .scr .r i.on { background: var(--accent); }
-.ph-a { left: 0; top: 10px; width: 190px; transform: rotate(-4deg); }
-.ph-b { left: 170px; top: 80px; width: 190px; transform: rotate(5deg); }
-.rib { position: absolute; background: var(--paper); color: var(--ink); font: 700 1.05rem var(--hand); padding: 6px 18px 8px; border-radius: 4px 40px 40px 4px; white-space: nowrap; box-shadow: 0 6px 14px rgba(0, 0, 0, .25); }
-.rib::before { content: ""; position: absolute; left: -22px; top: 50%; width: 22px; border-top: 3px solid var(--paper); }
-.r1 { left: 120px; top: 36px; } .r2 { left: 50px; top: 330px; } .r3 { left: 120px; top: 450px; }
-
-.win { background: var(--paper); border-radius: 10px; box-shadow: var(--shadow); overflow: hidden; padding: 8px; max-width: 100%; }
-.win .tb { min-height: 38px; padding-top: 8px; padding-bottom: 8px; border-radius: 6px; background: rgba(128, 128, 128, .16); display: flex; align-items: center; gap: 7px; padding-left: 14px; padding-right: 14px; font: 600 .75rem var(--sans); color: var(--ink2); }
-.win .tb i { width: 11px; height: 11px; border-radius: 50%; background: rgba(128, 128, 128, .5); }
-.win .tb u { text-decoration: none; margin-left: 8px; }
-.code { padding: 14px 16px; font: 600 .82rem/1.9 var(--mono); overflow-x: auto; }
-.code div { white-space: pre-wrap; overflow-wrap: anywhere; padding-left: 1.6em; text-indent: -1.6em; }
-.code .ck { color: var(--ok); margin-right: 8px; }
-.code .gap { color: var(--accent); }
-.f2r { display: grid; grid-template-columns: 1fr 1fr; }
-.f2r > * { min-width: 0; }
-.f2r > .code + .code { border-left: 2px dashed rgba(128, 128, 128, .45); }
-
-section { padding: 64px 0; }
-.eyebrow { font: 800 .78rem var(--sans); letter-spacing: .16em; text-transform: uppercase; color: var(--accent); }
-h2 { font: 900 clamp(1.9rem, 4vw, 3rem)/1.02 var(--sans); letter-spacing: -.03em; margin-top: 8px; }
-.sub { color: var(--ink2); max-width: 40rem; margin-top: 14px; font-size: 1.1rem; }
-
-.feats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-top: 34px; }
-.feat { background: var(--paper); border-radius: 8px; box-shadow: var(--shadow); padding: 22px 22px 24px; transform: rotate(var(--r, 0deg)); }
-.feat:nth-child(1) { --r: -.8deg; } .feat:nth-child(2) { --r: .6deg; } .feat:nth-child(3) { --r: -.4deg; }
-.feat b { display: block; font: 800 .78rem var(--sans); letter-spacing: .14em; text-transform: uppercase; color: var(--accent); margin-bottom: 8px; }
-.feat h3 { font: 800 1.25rem/1.2 var(--sans); }
-.feat p { color: var(--ink2); margin-top: 8px; }
-
-.studio-grid { display: grid; grid-template-columns: 1fr; gap: 30px; margin-top: 34px; }
-.shot { background: var(--paper); border-radius: 10px; box-shadow: var(--shadow); overflow: hidden; }
-.shot img { display: block; width: 100%; height: auto; }
-.shot figcaption { padding: 12px 18px; font: 600 .9rem var(--sans); color: var(--ink2); }
-.shot .scroll { overflow-x: auto; }
-.two { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; }
-
-.cols { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-top: 34px; }
-.sheet { background: var(--paper); border-radius: 6px; box-shadow: var(--shadow); padding: 22px 24px; transform: rotate(var(--r, 0deg)); }
-.sheet:nth-child(1) { --r: -.8deg; } .sheet:nth-child(2) { --r: .5deg; } .sheet:nth-child(3) { --r: -.6deg; }
-.sheet h3 { font: 800 .78rem var(--sans); letter-spacing: .14em; text-transform: uppercase; color: var(--accent); margin-bottom: 10px; }
-.sheet ul { list-style: none; padding: 0; font: 600 .92rem/2 var(--mono); }
-.sheet li.no { text-decoration: line-through; color: var(--ink3); }
-.sheet p { font-size: .95rem; color: var(--ink2); margin-top: 10px; }
-
-footer { padding: 40px 0 56px; color: var(--ink3); font-size: .9rem; }
-footer a { font-weight: 700; }
-
-@media (max-width: 980px) {
-  .hero { grid-template-columns: 1fr; padding-bottom: 40px; }
-  .feats, .cols, .two { grid-template-columns: 1fr; }
-  .spread { min-height: 560px; max-width: 420px; overflow: hidden; width: 100%; }
+/* the one device on the page: a highlighter stroke */
+.hl, .on .t {
+  padding: .02em .24em; margin: 0 -.24em; border-radius: .1em .24em .16em .12em;
+  background: linear-gradient(var(--mark), var(--mark)) no-repeat 0 62% / 100% var(--mh, 100%);
+  color: var(--on-mark);
+  -webkit-box-decoration-break: clone; box-decoration-break: clone;
 }
-@media (max-width: 640px) {
-  .wrap { width: calc(100% - 28px); }
-  section { padding: 44px 0; }
-  .f2r { grid-template-columns: 1fr; }
-  .f2r > .code + .code { border-left: 0; border-top: 2px dashed rgba(128, 128, 128, .45); }
-  .shot .scroll img { min-width: 760px; }
-  .spread { min-height: 540px; }
-  .ph { width: 160px !important; } .ph-b { left: 130px; }
-  .r1 { left: 110px; font-size: .9rem; } .r2 { left: 24px; top: 300px; font-size: .9rem; } .r3 { left: 40px; top: 410px; font-size: .9rem; }
-  .cmd { font-size: .72rem; padding: 12px; }
-  nav a { padding: 8px 8px; font-size: .74rem; }
-  .feat, .sheet { transform: none; }
+
+header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 4px 24px; padding: 22px 0; }
+.brand { display: inline-flex; align-items: center; gap: 9px; font-weight: 700; text-decoration: none; }
+.brand svg { width: 24px; height: 24px; flex: none; }
+nav { display: flex; flex-wrap: wrap; gap: 0 22px; font-size: 16px; }
+nav a { padding: 6px 0; text-decoration: none; }
+nav a:hover { text-decoration: underline; }
+
+/* hero: the pitch beside a real conversion */
+.hero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.14fr); gap: 72px; padding: 56px 0 96px; align-items: start; }
+h1 { font-size: clamp(50px, 6.3vw, 84px); font-weight: 800; line-height: 1.12; letter-spacing: -.015em; }
+h1 .hl { --mh: 80%; padding: 0 .14em; margin: 0 -.14em; border-radius: .06em .12em .08em .05em; }
+.lede { margin-top: 26px; font-size: 21px; line-height: 1.45; max-width: 26em; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 30px; }
+.btn { display: inline-flex; align-items: center; gap: 9px; min-height: 46px; padding: 0 16px; border: 1.5px solid var(--ink); border-radius: 8px; background: none; color: var(--ink); font: 600 16px/1.2 var(--sans); text-decoration: none; cursor: pointer; }
+.btn svg { width: 17px; height: 17px; flex: none; }
+.btn.copy { background: var(--ink); color: var(--page); font: 400 14px/1.2 var(--mono); }
+.btn:hover { background: var(--mark); border-color: var(--mark); color: var(--on-mark); }
+.copied { min-height: 28px; margin-top: 8px; font-size: 16px; color: var(--mute); }
+
+.tabs { display: none; flex-wrap: wrap; gap: 2px; margin: 0 0 18px -9px; }
+.js .tabs { display: flex; }
+.tabs button { min-height: 36px; padding: 0 9px; border: 0; border-radius: 5px; background: none; color: var(--mute); font: 400 15px/1 var(--mono); cursor: pointer; }
+.tabs button:hover { color: var(--ink); }
+.tabs button[aria-pressed="true"] { background: var(--mark); color: var(--on-mark); }
+.fname { font: 400 13.5px/22px var(--mono); }
+.fname + .file { margin-top: 8px; }
+.file + .fname { margin-top: 26px; }
+.file { margin: 0; padding: 0; list-style: none; counter-reset: ln; color: var(--mute); font: 400 13.5px/22px var(--mono); }
+.file li { position: relative; min-height: 22px; padding-left: 3em; counter-increment: ln; white-space: pre-wrap; overflow-wrap: anywhere; }
+.file li::before { content: counter(ln); position: absolute; left: 0; width: 2em; text-align: right; }
+.out { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); color: var(--mute); font-size: 13px; line-height: 20px; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* keywords */
+section { padding: 72px 0; border-top: 1px solid var(--line); }
+h2 { font-size: clamp(32px, 4.2vw, 52px); font-weight: 800; line-height: 1.1; letter-spacing: -.02em; max-width: 18em; text-wrap: balance; }
+.sub { margin-top: 16px; max-width: 38em; color: var(--mute); }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 26px; margin-top: 30px; font-size: 16px; color: var(--mute); }
+.legend i { display: inline-block; width: 22px; height: 12px; margin-right: 8px; border-radius: 2px; background: var(--quiet); }
+.legend i.hit { background: var(--mark); }
+.dims { --reach: .78; display: grid; grid-template-columns: minmax(0, 1fr); gap: 26px; max-width: 900px; margin-top: 28px; }
+.qh { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; margin-bottom: 6px; }
+.qh h3 { font-size: 18px; font-weight: 600; }
+.qh span { flex: none; font-weight: 700; font-size: 16px; }
+.row { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
+.bar { flex: 0 1 calc(var(--w) * var(--reach)); min-width: 0; height: 14px; border-radius: 2px; background: linear-gradient(var(--quiet), var(--quiet)) no-repeat 0 0 / 100% 100%; }
+.bar.hit { background-image: linear-gradient(var(--mark), var(--mark)); }
+.val { flex: none; font: 400 13.5px/1.3 var(--mono); color: var(--mute); }
+.note { margin-top: 26px; font-size: 16px; color: var(--mute); }
+
+/* features, studio and setup */
+.ways { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 48px; margin-top: 36px; align-items: start; }
+h3 { font-size: 18px; font-weight: 600; }
+.ways h3 { margin-bottom: 12px; }
+.table-wrap { overflow-x: auto; }
+table { border-collapse: collapse; font-size: 16px; }
+th, td { text-align: left; padding: 5px 24px 5px 0; vertical-align: top; }
+th { color: var(--mute); font-weight: 400; }
+td code { font-size: 14px; white-space: nowrap; }
+.feats { margin-top: 40px; }
+.feats table { width: 100%; }
+.feats td:first-child { width: 30%; min-width: 230px; font-weight: 600; }
+.feats td { padding-top: 9px; padding-bottom: 9px; }
+.ways pre { font-size: 14px; line-height: 24px; overflow-x: auto; }
+.ways pre + p { margin-top: 12px; font-size: 16px; color: var(--mute); }
+.shots { display: grid; grid-template-columns: minmax(0, 1fr); gap: 32px; margin-top: 48px; }
+.shot-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
+.shots img { display: block; width: 100%; height: auto; }
+figcaption { margin-top: 8px; max-width: 46em; font-size: 16px; color: var(--mute); }
+figcaption code { font-size: 14px; color: var(--ink); }
+.cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 40px 48px; margin-top: 36px; }
+.cols ul { padding: 0; margin-top: 10px; list-style: none; font-size: 16px; color: var(--mute); }
+.cols li { padding: 2px 0; }
+.cols p { margin-top: 10px; font-size: 16px; color: var(--mute); }
+
+footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 24px; padding: 26px 0 40px; border-top: 1px solid var(--line); color: var(--mute); font-size: 16px; }
+
+/* one motion, everywhere: the stroke being drawn left to right */
+@keyframes swipe { from { background-size: 0 var(--mh, 100%); color: var(--from, var(--mute)); } }
+@media (prefers-reduced-motion: no-preference) {
+  h1 .hl { --from: var(--ink); animation: swipe .4s var(--swipe) .3s backwards; }
+  .on .t { animation: swipe .42s var(--swipe) var(--d, 0s) backwards; }
+  .js .bar { background-size: 0 100%; }
+  .js .in .bar { background-size: 100% 100%; transition: background-size .7s var(--swipe) calc(var(--i) * 70ms); }
 }
-@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+}
+@media (max-width: 960px) {
+  .hero { grid-template-columns: minmax(0, 1fr); gap: 44px; padding: 32px 0 64px; }
+  h1 { font-size: clamp(40px, 13.4vw, 84px); }
+  .ways { grid-template-columns: minmax(0, 1fr); gap: 36px; }
+  .cols { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 600px) {
+  .wrap { width: calc(100% - 32px); }
+  body { font-size: 17px; }
+  .lede { font-size: 19px; }
+  section { padding: 52px 0; }
+  .btn.copy { font-size: 12px; padding: 0 10px; gap: 7px; }
+  .file { font-size: 12px; line-height: 20px; }
+  .file li { min-height: 20px; padding-left: 2.6em; }
+  .fname, .out { font-size: 12px; line-height: 18px; }
+  .dims { --reach: .5; }
+  .feats thead { display: none; }
+  .feats tr, .feats td { display: block; width: auto; padding: 0; }
+  .feats tr + tr { margin-top: 18px; }
+  .feats td code { white-space: normal; overflow-wrap: anywhere; }
+  .cols { grid-template-columns: minmax(0, 1fr); gap: 28px; }
+  .shot-scroll img { min-width: 900px; }
+}
 </style>
 </head>
 <body>
-<div class="wrap">
+<div class="wrap" id="top">
+
   <header>
-    <a class="brand" href="#top">robotframework-maestrolibrary</a>
-    <nav aria-label="Sections">
-      <a href="#features">Features</a>
-      <a href="#studio">Studio</a>
-      <a href="#get-started">Get started</a>
-      <a href="https://github.com/ai94iq/robotframework-maestrolibrary">GitHub</a>
-      <a class="pill" href="https://pypi.org/project/robotframework-maestrolibrary/">PyPI</a>
+    <a class="brand" href="#top">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="8" width="16" height="11" rx="3"/><path d="M12 8V5"/><circle cx="12" cy="4" r="1"/><path d="M9 13v1.5M15 13v1.5"/><path d="M2 13v3M22 13v3"/></svg>
+      robotframework-maestrolibrary
+    </a>
+    <nav aria-label="Main">
+      <a href="#features">Features</a><a href="#studio">Studio</a><a href="#get-started">Get started</a><a href="https://github.com/ai94iq/robotframework-maestrolibrary">GitHub</a><a href="https://pypi.org/project/robotframework-maestrolibrary/">PyPI</a>
     </nav>
   </header>
 
-  <main id="top">
+  <main>
     <div class="hero">
       <div>
-        <h1>Name every <span>tap.</span></h1>
+        <h1>Name every <br><mark class="hl">tap.</mark></h1>
         <p class="lede">Robot Framework keywords for mobile apps, driven by <a href="https://maestro.dev">Maestro</a>. The AppiumLibrary names, arguments and locators you know, with no Appium server and no capabilities.</p>
-        <div class="cta">
-          <button class="cmd" type="button" data-copy="pip install robotframework-maestrolibrary" aria-label="Copy the install command"><span aria-hidden="true">&#10064;</span><span>pip install robotframework-maestrolibrary</span></button>
-          <a class="link" href="#studio">Record a test on a live device &rarr;</a>
+        <div class="actions">
+          <button class="btn copy" type="button" data-copy="pip install robotframework-maestrolibrary">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>
+            pip install robotframework-maestrolibrary
+          </button>
+          <a class="btn" href="#studio">Record a test on a live device</a>
         </div>
-        <div class="win" style="margin-top:34px" id="flow">
-          <div class="tb"><i></i><i></i><i></i><u>settings_search.yaml &rarr; settings_search.robot</u></div>
-          <div class="f2r">
-            <div class="code" aria-label="A Maestro flow">
-<div><span class="ck">&#10003;</span>appId: com.android.settings</div>
-<div><span class="ck">&#10003;</span>- launchApp</div>
-<div><span class="ck">&#10003;</span>- assertVisible: "Search Settings"</div>
-<div><span class="ck">&#10003;</span>- inputText: "wifi"</div>
-<div><span class="ck">&#10003;</span>- hideKeyboard</div>
-            </div>
-            <div class="code" aria-label="The Robot test it becomes">
-<div><span class="ck">&#10003;</span>Open Application    com.android.settings</div>
-<div><span class="ck">&#10003;</span>Wait Until Page Contains Element    text\=Search Settings</div>
-<div><span class="ck">&#10003;</span>Input Text    ...    wifi</div>
-<div><span class="ck">&#10003;</span>Hide Keyboard</div>
-            </div>
-          </div>
-        </div>
+        <p class="copied" role="status" aria-live="polite"></p>
       </div>
-      <div class="spread" aria-hidden="true">
-        <div class="ph ph-a"><div class="scr"><div class="q">Search settings</div><div class="r"><i class="on"></i>Wi-Fi</div><div class="r"><i></i>Bluetooth</div><div class="r"><i></i>Battery</div><div class="r"><i></i>Display</div><div class="r"><i></i>Sound</div><div class="r"><i></i>Storage</div><div class="r"><i></i>Apps</div><div class="r"><i></i>Privacy</div></div></div>
-        <div class="ph ph-b"><div class="scr"><div class="q">Search settings</div><div class="r"><i></i>Wi-Fi</div><div class="r"><i class="on"></i>Bluetooth</div><div class="r"><i></i>Battery</div><div class="r"><i></i>Display</div><div class="r"><i></i>Sound</div><div class="r"><i></i>Storage</div><div class="r"><i></i>Apps</div><div class="r"><i></i>Privacy</div></div></div>
-        <span class="rib r1">Click Text</span>
-        <span class="rib r2">Input Text &nbsp;id=...</span>
-        <span class="rib r3">Wait Until Page Contains</span>
+
+      <div id="flow">
+        <div class="tabs" role="group" aria-label="Pick a step in the Maestro flow">
+          <button type="button" data-step="launch" aria-pressed="true">launchApp</button>
+          <button type="button" data-step="assert" aria-pressed="false">assertVisible</button>
+          <button type="button" data-step="input" aria-pressed="false">inputText</button>
+          <button type="button" data-step="hide" aria-pressed="false">hideKeyboard</button>
+        </div>
+        <p class="fname">settings_search.yaml</p>
+        <ol class="file" id="yaml" aria-label="A Maestro flow, settings_search.yaml"><li class=on style=--d:.75s><span class="t">appId: com.android.settings</span></li><li><span class="t">---</span></li><li class=on style=--d:.75s><span class="t">- launchApp</span></li><li><span class="t">- assertVisible: "Search Settings"</span></li><li><span class="t">- inputText: "wifi"</span></li><li><span class="t">- hideKeyboard</span></li></ol>
+        <p class="fname">settings_search.robot</p>
+        <ol class="file" id="robot" aria-label="The Robot test it becomes, settings_search.robot"><li><span class="t">*** Settings ***</span></li><li><span class="t">Library    MaestroLibrary</span></li><li></li><li><span class="t">*** Test Cases ***</span></li><li><span class="t">Settings Search</span></li><li class=on style=--d:.95s>    <span class="t">Open Application    com.android.settings</span></li><li>    <span class="t">Wait Until Page Contains Element    text\=Search Settings</span></li><li>    <span class="t">Input Text Into Current Element    wifi</span></li><li>    <span class="t">Hide Keyboard</span></li></ol>
+        <pre class="out">$ python -m MaestroLibrary.flow2robot settings_search.yaml &gt; settings_search.robot</pre>
+        <p class="sr" id="said" role="status"></p>
       </div>
     </div>
 
     <section id="features">
-      <p class="eyebrow">What it does</p>
       <h2>Keywords you already know. Tests you write by tapping.</h2>
-      <div class="feats">
-        <div class="feat"><b>Drop-in keywords</b><h3>AppiumLibrary names, no Appium</h3><p>Click Text, Input Text, the five Wait Until keywords, Swipe, Capture Page Screenshot and more. Maestro waits for the UI on every action, so there are no sleeps.</p></div>
-        <div class="feat"><b>Studio</b><h3>Tap a phone, get a Robot test</h3><p>A window shows the device live. Every action runs on it while the matching Robot line is recorded, with a locator and how many elements it matches.</p></div>
-        <div class="feat"><b>Flows both ways</b><h3>YAML to Robot, and back</h3><p>Convert a Maestro flow to a Robot test with <span class="mono">flow2robot</span>, or set <span class="mono">record_flows=True</span> and every command a test sends is written to a flow file.</p></div>
+      <p class="sub">How the keywords in MaestroLibrary 1.0.2 line up with AppiumLibrary 3.2.1, listed with Robot Framework's libdoc.</p>
+      <div class="legend"><span><i class="hit"></i>these keywords</span><span><i></i>the whole library</span><span>keyword count</span></div>
+      <div class="dims" id="chart" role="group" aria-label="Keyword counts: 53 of MaestroLibrary's 72 keywords share a name with AppiumLibrary, 46 also share argument names, 19 are added by Maestro, and 53 of AppiumLibrary's 110 keywords carry over">
+        <div class="q"><div class="qh"><h3>Same name as in AppiumLibrary</h3><span>74%</span></div>
+          <div class="row" style="--w:48.2%;--i:0"><div class="bar hit"></div><div class="val">53</div></div>
+          <div class="row" style="--w:65.5%;--i:1"><div class="bar"></div><div class="val">72 in MaestroLibrary</div></div></div>
+        <div class="q"><div class="qh"><h3>Same name and argument names</h3><span>64%</span></div>
+          <div class="row" style="--w:41.8%;--i:2"><div class="bar hit"></div><div class="val">46</div></div>
+          <div class="row" style="--w:65.5%;--i:3"><div class="bar"></div><div class="val">72 in MaestroLibrary</div></div></div>
+        <div class="q"><div class="qh"><h3>Added by Maestro</h3><span>26%</span></div>
+          <div class="row" style="--w:17.3%;--i:4"><div class="bar hit"></div><div class="val">19</div></div>
+          <div class="row" style="--w:65.5%;--i:5"><div class="bar"></div><div class="val">72 in MaestroLibrary</div></div></div>
+        <div class="q"><div class="qh"><h3>AppiumLibrary keywords that carry over</h3><span>48%</span></div>
+          <div class="row" style="--w:48.2%;--i:6"><div class="bar hit"></div><div class="val">53</div></div>
+          <div class="row" style="--w:100%;--i:7"><div class="bar"></div><div class="val">110 in AppiumLibrary</div></div></div>
       </div>
-      <div class="feats">
-        <div class="feat"><b>Maestro-only</b><h3>More than Appium had</h3><p>Run Flow, app permissions, Set Dark Mode, Set Airplane Mode, Add Media, Screenshot Should Match, and Travel for moving the location.</p></div>
-        <div class="feat"><b>Evidence</b><h3>Logs and mirroring</h3><p>On Android, every test's logcat is saved to its own file and linked in the log. Optional scrcpy mirroring shows the device while a suite runs.</p></div>
-        <div class="feat"><b>Locators</b><h3>Six that work</h3><p><span class="mono">text=</span>, <span class="mono">accessibility_id=</span>, <span class="mono">id=</span>, <span class="mono">regex=</span>, <span class="mono">id_regex=</span> and <span class="mono">point=</span>. Anything else fails with a clear message.</p></div>
-      </div>
+      <p class="note">What isn't ported, and what behaves differently, is in the <a href="https://github.com/ai94iq/robotframework-maestrolibrary#coming-from-appiumlibrary">README</a>.</p>
+      <div class="table-wrap feats"><table>
+        <thead><tr><th>Feature</th><th>What you get</th></tr></thead>
+        <tbody>
+          <tr><td>AppiumLibrary names, no Appium</td><td>Click Text, Input Text, the five Wait Until keywords, Swipe, Capture Page Screenshot and more. Maestro waits for the UI on every action, so there are no sleeps.</td></tr>
+          <tr><td>Tap a phone, get a Robot test</td><td>A window shows the device live. Every action runs on it while the matching Robot line is recorded, with a locator and how many elements it matches.</td></tr>
+          <tr><td>YAML to Robot, and back</td><td>Convert a Maestro flow to a Robot test with <code>flow2robot</code>, or set <code>record_flows=True</code> and every command a test sends is written to a flow file.</td></tr>
+          <tr><td>More than Appium had</td><td>Run Flow, app permissions, Set Dark Mode, Set Airplane Mode, Add Media, Screenshot Should Match, and Travel for moving the location.</td></tr>
+          <tr><td>Logs and mirroring</td><td>On Android, every test's logcat is saved to its own file and linked in the log. Optional scrcpy mirroring shows the device while a suite runs.</td></tr>
+          <tr><td>Six locators that work</td><td><code>text=</code>, <code>accessibility_id=</code>, <code>id=</code>, <code>regex=</code>, <code>id_regex=</code> and <code>point=</code>. Anything else fails with a clear message.</td></tr>
+        </tbody></table></div>
     </section>
 
     <section id="studio">
-      <p class="eyebrow">Studio</p>
       <h2>Pick an element. Get its locator. Tap it. It writes the line.</h2>
-      <p class="sub">Studio's Inspect mode shows each locator with how many elements it matches. Act mode runs your taps on the device and records them as Robot steps. Where an element has no unique locator, Studio records the tap with a note to ask for a test id.</p>
-      <div class="studio-grid">
-        <figure class="shot">
-          <div class="scroll"><picture><source media="(prefers-color-scheme: dark)" srcset="screenshots/studio-inspect-dark.png"><img src="screenshots/studio-inspect.png" width="2000" height="1270" loading="lazy" alt="Studio inspecting the Display and touch row on an Android emulator: the element tree, and the suggested locator text=Display and touch marked unique"></picture></div>
-          <figcaption>Inspect: the Display &amp; touch row, with its locators. <span class="mono">id=android:id/title</span> matches 10 elements; <span class="mono">text=Display &amp; touch</span> is unique.</figcaption>
+      <div class="ways">
+        <div>
+          <h3>Studio, on a live device</h3>
+          <div class="table-wrap"><table>
+            <thead><tr><th>In Studio</th><th>Does</th></tr></thead>
+            <tbody>
+              <tr><td><code>Inspect</code></td><td>shows each locator with how many elements it matches</td></tr>
+              <tr><td><code>Act</code></td><td>runs your taps on the device and records them as Robot steps</td></tr>
+              <tr><td><code>No unique locator</code></td><td>records the tap with a note to ask for a test id</td></tr>
+            </tbody></table></div>
+        </div>
+        <div>
+          <h3>Install Studio</h3>
+          <pre>pip install "robotframework-maestrolibrary[studio]"
+python -m MaestroLibrary.studio --app com.android.vending</pre>
+          <p>Windows, Linux and macOS builds: <a href="https://github.com/ai94iq/robotframework-maestrolibrary/releases">releases</a> (unsigned).</p>
+        </div>
+      </div>
+      <div class="shots">
+        <figure>
+          <div class="shot-scroll"><picture><source media="(prefers-color-scheme: dark)" srcset="screenshots/studio-inspect-dark.png"><img src="screenshots/studio-inspect.png" width="2000" height="1270" loading="lazy" alt="Studio inspecting the Display and touch row on an Android emulator: the element tree, and the suggested locator text=Display and touch marked unique"></picture></div>
+          <figcaption>Inspect: the Display &amp; touch row, with its locators. <code>id=android:id/title</code> matches 10 elements; <code>text=Display &amp; touch</code> is unique.</figcaption>
         </figure>
-        <figure class="shot">
-          <div class="scroll"><picture><source media="(prefers-color-scheme: dark)" srcset="screenshots/studio-recorded-dark.png"><img src="screenshots/studio-recorded.png" width="2000" height="1270" loading="lazy" alt="Studio after two taps: the Dark theme screen is open and the recorded test lists Open Application, Click Element text=Display and touch, and a Click Element by point with a GAP note"></picture></div>
+        <figure>
+          <div class="shot-scroll"><picture><source media="(prefers-color-scheme: dark)" srcset="screenshots/studio-recorded-dark.png"><img src="screenshots/studio-recorded.png" width="2000" height="1270" loading="lazy" alt="Studio after two taps: the Dark theme screen is open and the recorded test lists Open Application, Click Element text=Display and touch, and a Click Element by point with a GAP note"></picture></div>
           <figcaption>Act: two taps later the recorded test has three lines. The last one has no unique locator, so Studio adds a note to ask for a test id.</figcaption>
         </figure>
-      </div>
-      <div class="cta" style="margin-top:30px">
-        <button class="cmd" type="button" data-copy='pip install "robotframework-maestrolibrary[studio]"' aria-label="Copy the Studio install command"><span aria-hidden="true">&#10064;</span><span>pip install<br>"robotframework-maestrolibrary[studio]"</span></button>
-        <a class="link" href="https://github.com/ai94iq/robotframework-maestrolibrary/releases">Or download the Windows, Linux or macOS build &rarr;</a>
       </div>
     </section>
 
     <section id="get-started">
-      <p class="eyebrow">Get started</p>
       <h2>What you need, and where it runs.</h2>
       <div class="cols">
-        <div class="sheet"><h3>You need</h3><ul><li>Python 3.12 or newer</li><li>Maestro CLI and Java 17+</li><li>An Android emulator or device</li><li>adb on PATH</li><li>scrcpy, optional</li></ul></div>
-        <div class="sheet"><h3>Works with</h3><ul><li>Android emulators and devices</li><li>iOS simulators on a Mac</li><li>Flutter, Compose, React Native</li><li>Windows, Linux and macOS</li></ul></div>
-        <div class="sheet"><h3>Learn more</h3><p>Every keyword, import argument and platform note is in the <a href="https://github.com/ai94iq/robotframework-maestrolibrary#readme">README</a>, and the full list of changes is in the <a href="https://github.com/ai94iq/robotframework-maestrolibrary/blob/main/CHANGELOG.md">changelog</a>.</p></div>
+        <div><h3>You need</h3><ul><li>Python 3.12 or newer</li><li>Maestro CLI and Java 17+</li><li>An Android emulator or device</li><li>adb on PATH</li><li>scrcpy, optional</li></ul></div>
+        <div><h3>Works with</h3><ul><li>Android emulators and devices</li><li>iOS simulators on a Mac</li><li>Flutter, Compose, React Native</li><li>Windows, Linux and macOS</li></ul></div>
+        <div><h3>Learn more</h3><p>Every keyword, import argument and platform note is in the <a href="https://github.com/ai94iq/robotframework-maestrolibrary#readme">README</a>, and the full list of changes is in the <a href="https://github.com/ai94iq/robotframework-maestrolibrary/blob/main/CHANGELOG.md">changelog</a>.</p></div>
       </div>
     </section>
   </main>
 
   <footer>
-    <p>MIT licensed. <a href="https://github.com/ai94iq/robotframework-maestrolibrary">Source</a> &middot; <a href="https://github.com/ai94iq/robotframework-maestrolibrary/issues">Issues</a> &middot; <a href="https://github.com/ai94iq/robotframework-maestrolibrary/blob/main/CHANGELOG.md">Changelog</a> &middot; <a href="https://pypi.org/project/robotframework-maestrolibrary/">PyPI</a></p>
+    <span>MIT licensed.</span>
+    <span><a href="https://github.com/ai94iq/robotframework-maestrolibrary">Source</a>, <a href="https://github.com/ai94iq/robotframework-maestrolibrary/issues">Issues</a>, <a href="https://github.com/ai94iq/robotframework-maestrolibrary/blob/main/CHANGELOG.md">Changelog</a>, <a href="https://pypi.org/project/robotframework-maestrolibrary/">PyPI</a></span>
   </footer>
 </div>
+
 <script>
-document.querySelectorAll('[data-copy]').forEach(function (b) {
-  b.addEventListener('click', function () {
-    var t = b.getAttribute('data-copy'), s = b.querySelector('span:last-child'), old = s.innerHTML;
-    var done = function () { s.textContent = 'Copied'; setTimeout(function () { s.innerHTML = old; }, 1400); };
-    if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(t).then(done, function () { s.textContent = 'Select and copy it from the page'; setTimeout(function () { s.innerHTML = old; }, 2200); }); }
-    else { s.textContent = 'Select and copy it from the page'; setTimeout(function () { s.innerHTML = old; }, 2200); }
+(function () {
+  /* the chart draws once it reaches the window */
+  var chart = document.getElementById('chart');
+  if ('IntersectionObserver' in window) {
+    var io = new IntersectionObserver(function (es) {
+      es.forEach(function (e) { if (e.isIntersecting) { chart.classList.add('in'); io.disconnect(); } });
+    }, { threshold: 0.2 });
+    io.observe(chart);
+  } else { chart.classList.add('in'); }
+
+  var status = document.querySelector('.copied');
+  document.querySelectorAll('[data-copy]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var done = function () { status.textContent = 'Copied.'; setTimeout(function () { status.textContent = ''; }, 3500); };
+      var fail = function () { status.textContent = 'Select the text and copy it.'; };
+      if (navigator.clipboard) { navigator.clipboard.writeText(b.getAttribute('data-copy')).then(done, fail); } else { fail(); }
+    });
   });
-});
+
+  /* each step of the flow marks its lines on both sides: real flow2robot output */
+  var STEPS = {
+    launch: { yaml: [1, 3], robot: [6], say: 'launchApp becomes Open Application' },
+    assert: { yaml: [4], robot: [7], say: 'assertVisible becomes Wait Until Page Contains Element' },
+    input: { yaml: [5], robot: [8], say: 'inputText becomes Input Text Into Current Element' },
+    hide: { yaml: [6], robot: [9], say: 'hideKeyboard becomes Hide Keyboard' }
+  };
+  var yaml = document.getElementById('yaml');
+  var robot = document.getElementById('robot');
+  var said = document.getElementById('said');
+  var keys = document.querySelectorAll('[data-step]');
+
+  function mark(list, lines, delay) {
+    lines.forEach(function (n) {
+      var li = list.children[n - 1];
+      li.style.setProperty('--d', delay + 'ms');
+      li.classList.add('on');
+    });
+  }
+  keys.forEach(function (k) {
+    k.addEventListener('click', function () {
+      var step = STEPS[k.getAttribute('data-step')];
+      keys.forEach(function (o) { o.setAttribute('aria-pressed', String(o === k)); });
+      document.querySelectorAll('.on').forEach(function (li) { li.classList.remove('on'); });
+      void yaml.offsetWidth; /* so the stroke redraws when the same step is pressed again */
+      mark(yaml, step.yaml, 0);
+      mark(robot, step.robot, 220);
+      said.textContent = step.say;
+    });
+  });
+})();
 </script>
 </body>
 </html>
