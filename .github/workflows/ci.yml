@@ -7,9 +7,8 @@
 name: CI
 
 on:
-  push:
-    tags: ['v*.*.*']
-  workflow_dispatch:
+  release:
+    types: [published]
 
 permissions:
   contents: read
